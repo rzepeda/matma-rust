@@ -375,3 +375,16 @@ fn cross_file_impl_is_owned_by_type_and_trait_has_real_implementor() {
     assert_eq!(changes["changed_symbols"].as_array().unwrap().len(),1);
     assert_eq!(changes["changed_symbols"][0],"crate::model::Model");
 }
+
+#[test]
+fn validate_detects_missing_or_damaged_private_bridges() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/paired.rs"),"pub struct A;\n").unwrap();
+    assert!(run(root,&["scaffold","-f","A"]).status.success());
+    let source=fs::read_to_string(root.join("src/paired.rs")).unwrap();
+    fs::write(root.join("src/paired.rs"),source.replace("mod matma_unit_a;","mod wrong_test_name;")).unwrap();
+    let output=run(root,&["validate","--check","-o","json"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("incorrect or stale MATMA test bridge"));
+}

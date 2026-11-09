@@ -130,6 +130,55 @@ impl Scaffold {
         Ok(())
     }
 
+    /// Compare the actual managed bridge against the deterministic mirror
+    /// inventory; report omissions and drift without rewriting source.
+    pub fn bridge_diagnostics(project: &Project, records: &[SourceRecord]) -> Result<Vec<String>> {
+        let mut groups: BTreeMap<String, Vec<&SourceRecord>> = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        for record in records {
+            let mirrors = Self::mirror(project,record);
+            if ["unit_test","interaction_test","mock_file"].iter().any(|key|
+                mirrors[*key].as_str().is_some_and(|file| project.root.join(file).is_file())
+            ) {
+                groups.entry(record.source_file.clone()).or_default().push(record);
+            }
+        }
+        for (source,mut group) in groups {
+            group.sort_by_key(|r|r.identity());
+            let expected = Self::bridge_block(project,&source,&group)?;
+            let body = fs::read_to_string(project.root.join(&source))?;
+            let Some(start) = body.find(BEGIN) else {
+                diagnostics.push(format!("missing MATMA test bridge in {source}"));
+                continue;
+            };
+            let Some(end_rel) = body[start..].find(END) else {
+                diagnostics.push(format!("unterminated MATMA test bridge in {source}"));
+                continue;
+            };
+            let end = start + end_rel + END.len();
+            if body[start..end] != *expected.trim_end() {
+                diagnostics.push(format!("incorrect or stale MATMA test bridge in {source}"));
+            }
+            if body[end..].contains(BEGIN) {
+                diagnostics.push(format!("duplicate MATMA bridge block in {source}"));
+            }
+            for record in group {
+                let mirrors = Self::mirror(project,record);
+                for key in ["unit_test","interaction_test"] {
+                    let Some(path) = mirrors[key].as_str() else { continue; };
+                    if !project.root.join(path).is_file() { continue; }
+                    let content = fs::read_to_string(project.root.join(path))?;
+                    if content.contains("MATMA: implement isolated unit tests") ||
+                        content.contains("MATMA: implement exactly-two-real-object interaction tests") ||
+                        content.contains("MATMA: author real-implementor contract tests") {
+                        diagnostics.push(format!("unimplemented MATMA test placeholder: {path}"));
+                    }
+                }
+            }
+        }
+        Ok(diagnostics)
+    }
+
     pub fn create(project: &Project, records: &[SourceRecord], target: Option<&str>) -> Result<Vec<String>> {
         let chosen: Vec<_> = records.iter().filter(|r| target.map(|t| {
             t == r.source_file || t == r.symbol || t == r.identity() || r.source_file.ends_with(t)

@@ -121,6 +121,12 @@ impl Project {
                 Err(error) => errors.push(format!("{error}")),
             }
         }
+        if let Ok(records) = self.scan() {
+            match crate::scaffold::Scaffold::bridge_diagnostics(self,&records) {
+                Ok(mut failures) => errors.append(&mut failures),
+                Err(error) => errors.push(format!("test bridge validation error: {error:#}")),
+            }
+        }
         errors
     }
 }
