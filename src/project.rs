@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::env;
 use std::path::{Component, Path, PathBuf};
 use anyhow::{anyhow, bail, Result};
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 use crate::parser::SourceParser;
 use crate::source_record::SourceRecord;
@@ -54,6 +55,48 @@ impl Project {
             }
         }
         found.sort_by_key(SourceRecord::identity);
+        // A second AST pass binds out-of-file impls to declared types. This
+        // includes files with only impl blocks and no primary declaration.
+        for entry in WalkDir::new(&self.source_root).follow_links(false).sort_by_file_name() {
+            let entry = entry?;
+            if !entry.file_type().is_file()
+                || entry.path().extension().and_then(|e|e.to_str()) != Some("rs") { continue; }
+            for implementation in SourceParser::external_implementations(
+                entry.path(), &self.root, &self.source_root
+            )? {
+                let target = if implementation.owner.starts_with("crate::") {
+                    implementation.owner.clone()
+                } else if let Some(imported) = implementation.imports.get(&implementation.owner) {
+                    imported.clone()
+                } else {
+                    format!("{}::{}",implementation.module_name,implementation.owner)
+                };
+                let Some(record) = found.iter_mut().find(|r|r.identity() == target) else {
+                    continue;
+                };
+                if record.regions.iter().any(|r|
+                    r.source_file == implementation.source_file &&
+                    r.start_line == implementation.region.start_line &&
+                    r.kind == "impl") { continue; }
+                record.fingerprint = format!("{:x}",Sha256::digest(
+                    format!("{}\n{}",record.fingerprint,implementation.normalized).as_bytes()));
+                record.regions.push(implementation.region);
+                if let Some(contract) = implementation.contract {
+                    record.implemented_traits.insert(
+                        implementation.imports.get(&contract).cloned().unwrap_or(contract));
+                }
+                for reference in implementation.references {
+                    // Expand explicit use aliases before transferring references
+                    // to the type's canonical module identity.
+                    let head = reference.split("::").next().unwrap_or("");
+                    if let Some(imported) = implementation.imports.get(head) {
+                        record.references.insert(reference.replacen(head,imported,1));
+                    } else {
+                        record.references.insert(reference);
+                    }
+                }
+            }
+        }
         Ok(found)
     }
 

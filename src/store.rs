@@ -82,6 +82,7 @@ impl Store {
                 "symbol_kind":record.kind,"identity":record.identity(),"source_file":record.source_file,"source_sha256":record.sha256,
                 "fingerprint":record.fingerprint,"source_regions":record.regions,
                 "implemented_traits":record.implemented_traits,
+                "implementors":graph.implementors(&record.identity()),
                 "mirrors":mirrors,"dependencies":graph.dependencies(&record.identity(),records),
                 "dependents":dependents,"diagnostics":record.diagnostics,
             });

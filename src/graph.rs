@@ -6,6 +6,7 @@ use crate::source_record::SourceRecord;
 /// Usage has cost 1; import-only evidence has cost 2.
 pub struct Graph {
     edges: BTreeMap<String, BTreeMap<String, usize>>,
+    implementors: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Graph {
@@ -19,6 +20,7 @@ impl Graph {
             *type_counts.entry(record.source_file.clone()).or_default() += 1;
         }
         let mut edges = BTreeMap::new();
+        let mut implementors: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
         for source in records {
             let identity = source.identity();
             let mut targets: BTreeMap<String, usize> = BTreeMap::new();
@@ -58,9 +60,25 @@ impl Graph {
                     }
                 }
             }
+            for trait_name in &source.implemented_traits {
+                let path = if let Some(imported) = source.imports.get(trait_name) {
+                    Self::absolute(&source.module_name,imported)
+                } else if trait_name.starts_with("crate::") ||
+                    trait_name.starts_with("self::") || trait_name.starts_with("super::") {
+                    Self::absolute(&source.module_name,trait_name)
+                } else {
+                    format!("{}::{trait_name}",source.module_name)
+                };
+                if let Some(contract) = Self::resolve(&path,&identities) {
+                    if contract != identity {
+                        targets.insert(contract.clone(),1);
+                        implementors.entry(contract).or_default().insert(identity.clone());
+                    }
+                }
+            }
             edges.insert(identity, targets);
         }
-        Self { edges }
+        Self { edges, implementors }
     }
 
     fn absolute(module: &str, name: &str) -> String {
@@ -84,6 +102,11 @@ impl Graph {
         identities.iter()
             .filter(|identity| path == identity.as_str() || path.starts_with(&format!("{identity}::")))
             .max_by_key(|identity| identity.len()).cloned()
+    }
+
+    pub fn implementors(&self, contract: &str) -> Vec<String> {
+        self.implementors.get(contract).map(|items| items.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub fn dependencies(&self, source_identity: &str, records: &[SourceRecord]) -> Vec<Value> {

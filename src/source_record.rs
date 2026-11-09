@@ -33,3 +33,16 @@ impl SourceRecord {
         format!("{}::{}", self.module_name, self.symbol)
     }
 }
+
+/// One implementation block, which may reside outside its type declaration.
+#[derive(Debug, Clone)]
+pub struct ExternalImplementation {
+    pub owner: String,
+    pub source_file: String,
+    pub module_name: String,
+    pub imports: BTreeMap<String, String>,
+    pub references: BTreeSet<String>,
+    pub normalized: String,
+    pub region: SourceRegion,
+    pub contract: Option<String>,
+}
