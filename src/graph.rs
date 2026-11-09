@@ -11,6 +11,13 @@ pub struct Graph {
 impl Graph {
     pub fn new(records: &[SourceRecord]) -> Self {
         let identities: BTreeSet<String> = records.iter().map(SourceRecord::identity).collect();
+        // Rust imports are file/module scoped, not type scoped. When several
+        // types share one file, an unused import is NOT evidence that every
+        // type depends on its target.
+        let mut type_counts: BTreeMap<String, usize> = BTreeMap::new();
+        for record in records {
+            *type_counts.entry(record.source_file.clone()).or_default() += 1;
+        }
         let mut edges = BTreeMap::new();
         for source in records {
             let identity = source.identity();
@@ -22,6 +29,13 @@ impl Graph {
                         let used = source.references.iter().any(|reference| {
                             reference == alias || reference.starts_with(&format!("{alias}::"))
                         });
+                        // Keep the established conservative L2 import-only
+                        // convention for a one-type file. In a multi-type file,
+                        // unused module imports cannot be attributed to any
+                        // particular type, so do not invent that dependency.
+                        if !used && type_counts.get(&source.source_file).copied().unwrap_or(0) > 1 {
+                            continue;
+                        }
                         let weight = if used { 1 } else { 2 };
                         let entry = targets.entry(resolved).or_insert(weight);
                         *entry = (*entry).min(weight);

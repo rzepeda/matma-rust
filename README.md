@@ -81,3 +81,11 @@ MATMA targets **types**, not physical files. Multiple types may coexist in `src/
 Directed type dependencies may be cyclic (A → B → A). MATMA starts reverse traversal with the original type in a settled set, processes each additional type once and selects minimum weighted path distances (usage=1, import-only=2). Impact returns `affected_symbols` as well as deduplicated `affected_sources`, and a high level neither repeats the origin nor traverses the cycle indefinitely.
 
 Shared free functions, macros, reexports and unresolved generated code can affect multiple types. The current AST analysis does not fully attribute all such references and must not be represented as complete impact detection. The separately agreed Rust private-test child-module bridge is **not yet generated** by this version; current Cargo test entrypoints still see only public items.
+
+### No impact by file co-location
+
+When A and B share a source file, their unit tests and mocks are independent. Scaffolding A creates only test_a.rs and mock_a.rs under their respective order_processing.rs mirror directories. Impact A selects only A unless another type actually depends on A at the requested level. The affected_sources field lists physical files for context, not extra test targets; use affected_symbols and the returned test paths.
+
+Rust imports are module-scoped. In multi-type files, unused imports are not attributed to every type as L2 edges; real per-type usages are retained. Existing conservative unused-import behavior remains for single-type files. Unresolved macros and shared free functions still require review.
+
+Use fully qualified type identities (for example crate::services::order_processing::A) in the verification registry for multi-type files. A file-scoped registry entry is allowed only when that file defines one indexed type. Ambiguous entries fail explicitly.

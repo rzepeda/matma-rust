@@ -48,7 +48,7 @@ impl Impact {
                 }
             }
         }
-        let (business,regression,registry_missing) = Self::registrations(project,&affected,&affected_symbols)?;
+        let (business,regression,registry_missing) = Self::registrations(project,&affected,&affected_symbols,symbols)?;
         missing.extend(registry_missing);
         Ok(json!({"status":"ok","command":"impact","target":origin_identity,"source_file":origin,"level":level,
             "affected_sources":affected,"affected_symbols":affected_symbols,"unit_tests":unit,"interaction_tests":interaction,
@@ -63,7 +63,7 @@ impl Impact {
         }
     }
 
-    fn registrations(project: &Project, affected: &BTreeSet<String>, affected_symbols: &BTreeSet<String>) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
+    fn registrations(project: &Project, affected: &BTreeSet<String>, affected_symbols: &BTreeSet<String>, symbols: &[Value]) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
         let path = project.tests_root.join("matma-verification.yaml");
         let mut business = BTreeSet::new();
         let mut regression = BTreeSet::new();
@@ -71,7 +71,18 @@ impl Impact {
         if !path.exists() { return Ok((business,regression,missing)); }
         let root: Value = serde_yaml::from_str(&fs::read_to_string(path)?)?;
         for row in root["entries"].as_array().into_iter().flatten() {
-            if !row["source"].as_str().map(|s| affected.contains(s) || affected_symbols.contains(s)).unwrap_or(false) { continue; }
+            let Some(source) = row["source"].as_str() else { continue; };
+            if affected_symbols.contains(source) {
+                // The registered source names this exact type, even when the
+                // physical file also contains other unrelated types.
+            } else if affected.contains(source) {
+                let matching_types = symbols.iter().filter(|s| s["source_file"].as_str() == Some(source)).count();
+                if matching_types != 1 {
+                    bail!("ambiguous MATMA verification registration {source}: file contains {matching_types} types; register a fully qualified type identity instead");
+                }
+            } else {
+                continue;
+            }
             for (name, paths) in [("business",&mut business),("regression",&mut regression)] {
                 if let Some(group) = row[name].as_array() {
                     for value in group {

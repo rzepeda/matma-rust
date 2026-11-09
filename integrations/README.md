@@ -13,3 +13,7 @@ Copy the **contents of one source skill folder** into the corresponding destinat
 Every destination must contain its own `SKILL.md` at the first directory level. ChatGPT/Codex and Antigravity use **separate names** to avoid collisions under `.agents/skills`. The ChatGPT web UI may not automatically discover local project folders; use a supported skill upload/connector or attach these instructions to a Project/Work context as appropriate. Codex recognizes `.agents/skills`. Antigravity also recognizes `.agents/skills`, and Claude Code uses `.claude/skills`.
 
 Each package includes a local `references/commands.md`, so copying only one does not break its references. The installation does not edit production code and does not claim that a skill has been enabled inside a service merely because the files exist here.
+
+## Type-scoped mirroring and impact
+
+For A and B in src/services/order_processing.rs, the unit mirrors are tests/unit/mirror/services/order_processing.rs/test_a.rs and test_b.rs; mock mirrors are tests/mocks/mirror/services/order_processing.rs/mock_a.rs and mock_b.rs. Impact of A must not include B just because the two types share a file. Use affected_symbols and returned test paths for selection. Multi-type files need fully qualified symbol identities in the verification registry.

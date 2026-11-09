@@ -57,6 +57,7 @@ impl SourceParser {
         }
         let module_name = format!("crate::{}", module_segments.join("::"));
         let source_sha256 = format!("{:x}", Sha256::digest(&bytes));
+        let has_shared_imports = types.len() > 1 && !imports.is_empty();
         let has_shared_functions = file.items.iter().any(|item| matches!(item, Item::Fn(_)));
         let mut records = Vec::new();
         for (symbol, kind) in types {
@@ -73,6 +74,9 @@ impl SourceParser {
                 if owns_item { visitor.visit_item(item); }
             }
             let mut own_diagnostics = diagnostics.clone();
+            if has_shared_imports {
+                own_diagnostics.push("shared module imports: unused imports are not attributed to individual types".into());
+            }
             if has_shared_functions {
                 own_diagnostics.push("shared module-level free functions have no single type owner".into());
             }

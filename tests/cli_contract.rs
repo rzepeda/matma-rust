@@ -191,3 +191,85 @@ fn cycles_and_diamonds_keep_minimum_reverse_impact_level() {
     assert_eq!(c_manifest["dependents"]["level_2"].as_array().unwrap().len(), 1);
     assert_eq!(c_manifest["dependents"]["level_2"][0]["identity"], "crate::chain::A");
 }
+
+
+#[test]
+fn unrelated_types_share_file_but_not_tests_mocks_or_impact() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::create_dir_all(root.join("src/services")).unwrap();
+    fs::write(root.join("src/external.rs"), "pub struct External;\n").unwrap();
+    fs::write(root.join("src/services/order_processing.rs"),
+        "use crate::external::External;\npub struct A { pub external: External }\nimpl A { pub fn run(&self) {} }\npub struct B { pub number: u8 }\nimpl B { pub fn run(&self) {} }\n").unwrap();
+    assert!(run(root, &["index"]).status.success());
+    let a: serde_json::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/services/order_processing.rs/a.auto.yaml")).unwrap()).unwrap();
+    let b: serde_json::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/services/order_processing.rs/b.auto.yaml")).unwrap()).unwrap();
+    assert_eq!(a["dependencies"][0]["identity"], "crate::external::External");
+    assert!(b["dependencies"].as_array().unwrap().is_empty());
+    assert_eq!(a["mirrors"]["mock_file"], "tests/mocks/mirror/services/order_processing.rs/mock_a.rs");
+    assert_eq!(b["mirrors"]["mock_file"], "tests/mocks/mirror/services/order_processing.rs/mock_b.rs");
+
+    assert!(run(root, &["scaffold", "-f", "A"]).status.success());
+    assert!(root.join("tests/unit/mirror/services/order_processing.rs/test_a.rs").is_file());
+    assert!(root.join("tests/mocks/mirror/services/order_processing.rs/mock_a.rs").is_file());
+    assert!(!root.join("tests/unit/mirror/services/order_processing.rs/test_b.rs").exists());
+    assert!(!root.join("tests/mocks/mirror/services/order_processing.rs/mock_b.rs").exists());
+    assert!(run(root, &["scaffold", "-f", "B"]).status.success());
+    assert!(root.join("tests/unit/mirror/services/order_processing.rs/test_b.rs").is_file());
+    assert!(root.join("tests/mocks/mirror/services/order_processing.rs/mock_b.rs").is_file());
+
+    for level in ["0", "1", "2", "1000"] {
+        let result = run(root, &["impact", "-f", "A", "-l", level, "-o", "json"]);
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+        let selection: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(selection["affected_symbols"].as_array().unwrap().len(), 1, "level {level}");
+        assert_eq!(selection["affected_symbols"][0], "crate::services::order_processing::A");
+        assert!(!selection["unit_tests"].as_array().unwrap().iter()
+            .any(|v| v.as_str() == Some("tests/unit/mirror/services/order_processing.rs/test_b.rs")));
+    }
+    let result = run(root, &["impact", "-f", "External", "-l", "2", "-o", "json"]);
+    let selection: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(selection["affected_symbols"].as_array().unwrap().len(), 2);
+    assert!(!selection["affected_symbols"].as_array().unwrap().iter()
+        .any(|v| v.as_str() == Some("crate::services::order_processing::B")));
+}
+#[test]
+fn actual_same_file_dependency_only_expands_reverse_impact_at_level_one() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::write(root.join("src/paired.rs"), "pub struct A;\npub struct B { pub a: A }\npub struct C;\n").unwrap();
+    assert!(run(root, &["index"]).status.success());
+    let zero = run(root, &["impact", "-f", "A", "-l", "0", "-o", "json"]);
+    let a: serde_json::Value = serde_json::from_slice(&zero.stdout).unwrap();
+    assert_eq!(a["affected_symbols"].as_array().unwrap().len(), 1);
+    let one = run(root, &["impact", "-f", "A", "-l", "1", "-o", "json"]);
+    let a: serde_json::Value = serde_json::from_slice(&one.stdout).unwrap();
+    let symbols = a["affected_symbols"].as_array().unwrap();
+    assert_eq!(symbols.len(), 2);
+    assert!(symbols.iter().any(|v| v.as_str() == Some("crate::paired::B")));
+    assert!(!symbols.iter().any(|v| v.as_str() == Some("crate::paired::C")));
+}
+#[test]
+fn business_registry_scopes_to_type_and_rejects_ambiguous_file_registration() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::write(root.join("src/paired.rs"), "pub struct A;\npub struct B;\n").unwrap();
+    fs::create_dir_all(root.join("tests/business")).unwrap();
+    fs::write(root.join("tests/business/a.rs"), "#[test] fn a() {}\n").unwrap();
+    fs::write(root.join("tests/business/b.rs"), "#[test] fn b() {}\n").unwrap();
+    fs::write(root.join("tests/matma-verification.yaml"),
+        "entries:\n  - source: crate::paired::A\n    business:\n      - tests/business/a.rs\n  - source: crate::paired::B\n    business:\n      - tests/business/b.rs\n").unwrap();
+    assert!(run(root, &["index"]).status.success());
+    let output = run(root, &["impact", "-f", "A", "-o", "json"]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["business_tests"].as_array().unwrap().len(), 1);
+    assert_eq!(result["business_tests"][0], "tests/business/a.rs");
+    fs::write(root.join("tests/matma-verification.yaml"),
+        "entries:\n  - source: src/paired.rs\n    business:\n      - tests/business/b.rs\n").unwrap();
+    let error = run(root, &["impact", "-f", "A"]);
+    assert!(!error.status.success());
+    assert!(String::from_utf8_lossy(&error.stderr).contains("ambiguous MATMA verification registration"));
+}
