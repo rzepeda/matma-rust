@@ -79,7 +79,7 @@ impl Store {
             }
             let manifest = json!({
                 "schema_version":1,"generator":"matma-rust", "symbol_name":record.symbol,
-                "symbol_kind":record.kind,"identity":record.identity(),"source_file":record.source_file,
+                "symbol_kind":record.kind,"identity":record.identity(),"source_file":record.source_file,"source_sha256":record.sha256,
                 "mirrors":mirrors,"dependencies":graph.dependencies(&record.source_file,records),
                 "dependents":dependents,"diagnostics":record.diagnostics,
             });

@@ -9,7 +9,7 @@ pub struct Scaffold;
 
 impl Scaffold {
     pub fn mirror(project: &Project, record: &SourceRecord) -> Value {
-        let rel = Path::new(&record.source_file).strip_prefix(&project.source_root.strip_prefix(&project.root).unwrap()).unwrap();
+        let rel = Path::new(&record.source_file).strip_prefix(project.source_root.strip_prefix(&project.root).unwrap()).unwrap();
         let stem = rel.file_stem().unwrap().to_string_lossy();
         let parent = rel.parent().unwrap_or(Path::new(""));
         let tests = project.tests_root.strip_prefix(&project.root).unwrap();
