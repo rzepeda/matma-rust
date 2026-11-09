@@ -23,3 +23,16 @@ jobs:
       - run: cargo check --all-targets
       - run: cargo test --all-targets
       - run: cargo clippy --all-targets -- -D warnings
+
+      - run: cargo build --bin matma-indexer
+      - name: Consumer acceptance — native private mirrors, real pairs and stateful mocks
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then EXE=../../target/debug/matma-indexer.exe; else EXE=../../target/debug/matma-indexer; fi
+          cd fixtures/consumer
+          "$EXE" scaffold --target A --format json
+          "$EXE" scaffold --target B --format json
+          "$EXE" scaffold --target PricingContract --format json
+          "$EXE" validate --check --format json
+          "$EXE" impact --target A --level 1 --format json
+          cargo test --all-targets
