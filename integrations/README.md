@@ -12,7 +12,7 @@ Copy the **contents of one source skill folder** into the corresponding destinat
 
 Every destination must contain its own `SKILL.md` at the first directory level. ChatGPT/Codex and Antigravity use **separate names** to avoid collisions under `.agents/skills`. The ChatGPT web UI may not automatically discover local project folders; use a supported skill upload/connector or attach these instructions to a Project/Work context as appropriate. Codex recognizes `.agents/skills`. Antigravity also recognizes `.agents/skills`, and Claude Code uses `.claude/skills`.
 
-Each package includes a local `references/commands.md`, so copying only one does not break its references. The installation does not edit production code and does not claim that a skill has been enabled inside a service merely because the files exist here.
+Each package is **self-contained**: its `SKILL.md` contains all seven mandatory architectural rules, the accepted Rust amendments, the full real/mocked testing boundaries, and the development workflow. Its adjacent `references/commands.md` supplies runnable CLI details. Copy the **entire skill folder**, not just `SKILL.md`; no external MATMA README or ADR is required to understand the rules. The installation does not edit production code and does not claim that a skill has been enabled inside a service merely because the files exist here.
 
 ## Type-scoped mirroring and impact
 
@@ -21,3 +21,7 @@ For A and B in src/services/order_processing.rs, the unit mirrors are tests/unit
 ## Rust native testing and indexing
 
 Scaffold now creates managed test-only child-module bridges in the owning source module. Unit/interaction mirrored tests run with `cargo test --lib <module-test-filter>` (or appropriate owning binary), not old external `cargo test --test matma_unit` entrypoints. Run `matma-indexer context -f Type` for symbol-limited source regions and `matma-indexer changes --level N` after two meaningfully different `index` revisions for type-fingerprint change selection. Traits have real-implementor contract tests, and creator-aware mocking must preserve exactly the required real objects.
+
+## Skill completeness verification
+
+`cargo test --test skill_package_contract` checks all three installable skill packages contain Rules 1–7, Rust test/private-access requirements, the current CLI workflow and bundled references, without obsolete external-test instructions. When MATMA rules change, update all three independently installable packages and keep this test green.
