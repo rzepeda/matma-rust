@@ -300,3 +300,47 @@ fn scaffolding_bridges_private_types_without_overwriting_authored_tests() {
     let impact=run(root,&["impact","-f","A","-o","json"]);
     assert!(impact.status.success(),"{}",String::from_utf8_lossy(&impact.stderr));
 }
+
+
+#[test]
+fn changes_tracks_individual_ast_fingerprints_and_context_spans() {
+    let temp = fixture();
+    let root = temp.path();
+    let file = root.join("src/paired.rs");
+    fs::write(&file, "pub struct A;\nimpl A { pub fn value(&self) -> u8 { 1 } }\npub struct B;\nimpl B { pub fn value(&self) -> u8 { 8 } }\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let context = run(root,&["context","-f","A","-o","json"]);
+    assert!(context.status.success(),"{}",String::from_utf8_lossy(&context.stderr));
+    let data:serde_json::Value=serde_json::from_slice(&context.stdout).unwrap();
+    let snippets:Vec<_>=data["regions"].as_array().unwrap().iter()
+       .map(|v|v["snippet"].as_str().unwrap()).collect();
+    assert_eq!(snippets.len(),2);
+    assert!(snippets.join("\n").contains("pub struct A"));
+    assert!(snippets.join("\n").contains("impl A"));
+    assert!(!snippets.join("\n").contains("impl B"));
+
+    fs::write(&file, "pub struct A;\nimpl A { pub fn value(&self) -> u8 { 2 } }\npub struct B;\nimpl B { pub fn value(&self) -> u8 { 8 } }\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let output=run(root,&["changes","-l","0","-o","json"]);
+    assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));
+    let data:serde_json::Value=serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(data["changed_symbols"].as_array().unwrap().len(),1);
+    assert_eq!(data["changed_symbols"][0],"crate::paired::A");
+    assert_eq!(data["affected_symbols"].as_array().unwrap().len(),1);
+
+    // Reindexing an identical AST does not discard the meaningful baseline.
+    fs::write(&file, "pub struct A;\nimpl A {pub fn value(&self)->u8{2}}\npub struct B;\nimpl B { pub fn value(&self) -> u8 { 8 } }\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let output=run(root,&["changes","-l","0","-o","json"]);
+    let data:serde_json::Value=serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(data["changed_symbols"][0],"crate::paired::A");
+}
+#[test]
+fn changes_requires_two_meaningful_indexed_revisions() {
+    let temp=fixture();
+    let root=temp.path();
+    assert!(run(root,&["index"]).status.success());
+    let output=run(root,&["changes"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("no preceding type index"));
+}

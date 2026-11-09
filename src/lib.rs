@@ -1,4 +1,6 @@
 mod cli;
+mod changes;
+mod context;
 mod command;
 mod graph;
 mod impact;
@@ -28,7 +30,9 @@ fn execute(cli: Cli) -> Result<()> {
         Command::Index { options, .. }
         | Command::Scaffold { options, .. }
         | Command::Validate { options, .. }
-        | Command::Impact { options, .. } => options,
+        | Command::Impact { options, .. }
+        | Command::Changes { options, .. }
+        | Command::Context { options, .. } => options,
     };
     let output = options.format.clone();
     let project = Project::new(&options.source_root, &options.tests_root)?;
@@ -60,6 +64,8 @@ fn execute(cli: Cli) -> Result<()> {
             json!({"status":"ok","command":"scaffold","created":created})
         }
         Command::Impact { target, level, .. } => impact::Impact::select(&project, &target, level)?,
+        Command::Changes { level, .. } => changes::Changes::select(&project,level)?,
+        Command::Context { target, .. } => context::Context::read(&project,&target)?,
     };
     print_result(&output, &result)
 }

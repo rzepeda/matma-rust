@@ -17,6 +17,20 @@ pub enum Command {
         #[arg(long, short = 'f')]
         target: Option<String>,
     },
+    /// Compare current and preceding type fingerprints and union dependency graphs.
+    Changes {
+        #[command(flatten)]
+        options: Options,
+        #[arg(long, short = 'l', default_value_t = 1)]
+        level: usize,
+    },
+    /// Extract AST-owned source regions and contracts for one type, not its entire file.
+    Context {
+        #[command(flatten)]
+        options: Options,
+        #[arg(long, short = 'f')]
+        target: String,
+    },
     /// Audit Rust type identities and source syntax.
     Validate {
         #[command(flatten)]

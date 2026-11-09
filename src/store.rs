@@ -95,10 +95,21 @@ impl Store {
             "fingerprint":r.fingerprint,"dependencies":graph.dependencies(&r.identity(),records),
             "manifest":Scaffold::mirror(project,r)["manifest_file"]
         })).collect();
-        let index = json!({"schema_version":2,"generator":"matma-rust","source_root":source_root,
+        let index = json!({"schema_version":3,"generator":"matma-rust","source_root":source_root,
             "tests_root":tests_root,"files":hashes,"directories":dirs,"symbols":symbols});
         let index_path = project.relative(&project.tests_root.join("mirror/.index.auto.yaml"))?;
         expected.insert(index_path.clone());
+        let previous_path = project.relative(&project.tests_root.join("mirror/.previous.auto.yaml"))?;
+        let prior_path = project.root.join(&index_path);
+        if prior_path.exists() {
+            let prior = Self::read_yaml(&prior_path)?;
+            if prior["schema_version"] == 3 && prior["symbols"] != index["symbols"] {
+                // Preserve the last meaningful, type-scoped revision.
+                // Repeated indexing with no source change does not erase it.
+                Self::output(project,&previous_path,&serde_yaml::to_string(&prior)?)?;
+            }
+        }
+        if project.root.join(&previous_path).is_file() { expected.insert(previous_path); }
         // Remove only owned, obsolete generated manifests. Never delete authored files.
         let mirror_root = project.tests_root.join("mirror");
         if mirror_root.exists() {
@@ -118,7 +129,7 @@ impl Store {
     pub fn read(project: &Project) -> Result<Value> {
         let path = project.tests_root.join("mirror/.index.auto.yaml");
         let index = Self::read_yaml(&path)?;
-        if index["schema_version"] != 2 || index["generator"] != "matma-rust" { bail!("unsupported MATMA index schema"); }
+        if index["schema_version"] != 3 || index["generator"] != "matma-rust" { bail!("unsupported MATMA index schema"); }
         if index["source_root"].as_str() != Some(project.relative(&project.source_root)?.as_str())
             || index["tests_root"].as_str() != Some(project.relative(&project.tests_root)?.as_str()) {
             bail!("MATMA index configuration changed; run index");
