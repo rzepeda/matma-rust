@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 use anyhow::{anyhow, bail, Context, Result};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 use crate::graph::Graph;
@@ -52,7 +52,7 @@ impl Store {
             let entry = item?;
             if entry.file_type().is_symlink() { bail!("symlink inside Rust source root: {}",entry.path().display()); }
             let relative = project.relative(entry.path())?;
-            if entry.file_type().is_dir() { dirs.insert(relative, Self::modified(entry.path())?); }
+            if entry.file_type().is_dir() { dirs.insert(relative.clone(), Self::modified(entry.path())?); }
             if entry.file_type().is_file() && entry.path().extension().and_then(|v|v.to_str())==Some("rs") {
                 let data = fs::read(entry.path())?;
                 files.insert(relative, format!("{:x}", Sha256::digest(data)));

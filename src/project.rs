@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::env;
 use std::path::{Component, Path, PathBuf};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Result};
 use walkdir::WalkDir;
 use crate::parser::SourceParser;
 use crate::source_record::SourceRecord;

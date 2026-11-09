@@ -24,12 +24,13 @@ pub fn run() -> Result<()> {
 }
 
 fn execute(cli: Cli) -> Result<()> {
-    let (options, output) = match &cli.command {
+    let options = match &cli.command {
         Command::Index { options, .. }
         | Command::Scaffold { options, .. }
         | Command::Validate { options, .. }
-        | Command::Impact { options, .. } => (options, options.format.as_str()),
+        | Command::Impact { options, .. } => options,
     };
+    let output = options.format.clone();
     let project = Project::new(&options.source_root, &options.tests_root)?;
     let result = match cli.command {
         Command::Index { scaffold, .. } => {
@@ -42,7 +43,7 @@ fn execute(cli: Cli) -> Result<()> {
         Command::Validate { check, .. } => {
             let failures = project.validate();
             let result = json!({"status":if failures.is_empty(){"ok"}else{"invalid"},"command":"validate","diagnostics":failures});
-            print_result(output, &result)?;
+            print_result(&output, &result)?;
             if check && !failures.is_empty() { bail!("structure validation failed"); }
             return Ok(());
         }
@@ -55,7 +56,7 @@ fn execute(cli: Cli) -> Result<()> {
         }
         Command::Impact { target, level, .. } => impact::Impact::select(&project, &target, level)?,
     };
-    print_result(output, &result)
+    print_result(&output, &result)
 }
 
 fn print_result(format: &str, value: &Value) -> Result<()> {
