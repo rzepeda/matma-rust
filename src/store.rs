@@ -68,19 +68,19 @@ impl Store {
             let manifest_path = mirrors["manifest_file"].as_str().unwrap();
             expected.insert(manifest_path.to_string());
             let mut dependents: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-            for (file, level) in graph.dependents(&record.source_file) {
-                if let Some(r) = records.iter().find(|r| r.source_file == file) {
+            for (identity, level) in graph.dependents(&record.identity()) {
+                if let Some(r) = records.iter().find(|r| r.identity() == identity) {
                     dependents.entry(format!("level_{level}")).or_default().push(json!({
-                        "symbol_name":r.symbol,"source_file":file,
+                        "symbol_name":r.symbol,"identity":identity,"source_file":r.source_file,
                         "unit_test":Scaffold::mirror(project,r)["unit_test"],
                         "interaction_test":Scaffold::mirror(project,r)["interaction_test"]
                     }));
                 }
             }
             let manifest = json!({
-                "schema_version":1,"generator":"matma-rust", "symbol_name":record.symbol,
+                "schema_version":2,"generator":"matma-rust", "symbol_name":record.symbol,
                 "symbol_kind":record.kind,"identity":record.identity(),"source_file":record.source_file,"source_sha256":record.sha256,
-                "mirrors":mirrors,"dependencies":graph.dependencies(&record.source_file,records),
+                "mirrors":mirrors,"dependencies":graph.dependencies(&record.identity(),records),
                 "dependents":dependents,"diagnostics":record.diagnostics,
             });
             Self::output(project, manifest_path, &serde_yaml::to_string(&manifest)?)?;
@@ -92,7 +92,7 @@ impl Store {
             "source_file":r.source_file,"symbol":r.symbol,"identity":r.identity(),
             "manifest":Scaffold::mirror(project,r)["manifest_file"]
         })).collect();
-        let index = json!({"schema_version":1,"generator":"matma-rust","source_root":source_root,
+        let index = json!({"schema_version":2,"generator":"matma-rust","source_root":source_root,
             "tests_root":tests_root,"files":hashes,"directories":dirs,"symbols":symbols});
         let index_path = project.relative(&project.tests_root.join("mirror/.index.auto.yaml"))?;
         expected.insert(index_path.clone());
@@ -115,7 +115,7 @@ impl Store {
     pub fn read(project: &Project) -> Result<Value> {
         let path = project.tests_root.join("mirror/.index.auto.yaml");
         let index = Self::read_yaml(&path)?;
-        if index["schema_version"] != 1 || index["generator"] != "matma-rust" { bail!("unsupported MATMA index schema"); }
+        if index["schema_version"] != 2 || index["generator"] != "matma-rust" { bail!("unsupported MATMA index schema"); }
         if index["source_root"].as_str() != Some(project.relative(&project.source_root)?.as_str())
             || index["tests_root"].as_str() != Some(project.relative(&project.tests_root)?.as_str()) {
             bail!("MATMA index configuration changed; run index");

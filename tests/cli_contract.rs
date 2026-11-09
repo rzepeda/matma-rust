@@ -26,7 +26,7 @@ fn index_impact_and_staleness_contract() {
     assert!(index.status.success(),"{}",String::from_utf8_lossy(&index.stderr));
     let index_body = String::from_utf8(index.stdout).unwrap();
     assert!(index_body.contains("\"indexed\": 3"),"{index_body}");
-    let manifest = fs::read_to_string(root.join("tests/mirror/gateway.auto.yaml")).unwrap();
+    let manifest = fs::read_to_string(root.join("tests/mirror/gateway.rs/gateway.auto.yaml")).unwrap();
     assert!(manifest.contains("level_1"),"{manifest}");
     assert!(manifest.contains("level_2"),"{manifest}");
 
@@ -54,10 +54,10 @@ fn scaffold_is_non_destructive_and_failing_by_design() {
     let root = temp.path();
     let first = run(root,&["scaffold","-f","Gateway"]);
     assert!(first.status.success(),"{}",String::from_utf8_lossy(&first.stderr));
-    let test = root.join("tests/unit/mirror/test_gateway.rs");
+    let test = root.join("tests/unit/mirror/gateway.rs/test_gateway.rs");
     let original = fs::read_to_string(&test).unwrap();
     assert!(original.contains("panic!"));
-    assert!(root.join("tests/mocks/mirror/mock_gateway.rs").exists());
+    assert!(root.join("tests/mocks/mirror/gateway.rs/mock_gateway.rs").exists());
     assert!(root.join("tests/matma_unit.rs").exists());
     fs::write(&test,"// developer-authored test\n").unwrap();
     let second = run(root,&["scaffold","-f","Gateway"]);
@@ -66,12 +66,11 @@ fn scaffold_is_non_destructive_and_failing_by_design() {
 }
 
 #[test]
-fn structural_validation_rejects_misnamed_types() {
+fn structural_validation_accepts_native_filename_without_forcing_class_name() {
     let temp = fixture();
     fs::write(temp.path().join("src/wrong.rs"),"pub struct Different;\n").unwrap();
     let output = run(temp.path(), &["validate","--check","-o","json"]);
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stdout).contains("expected filename different.rs"));
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
 }
 
 #[test]
@@ -114,9 +113,9 @@ fn indexing_is_byte_stable_and_does_not_rewrite_application_source() {
     let root=temp.path();
     let source=fs::read(root.join("src/gateway.rs")).unwrap();
     assert!(run(root,&["index"]).status.success());
-    let before=fs::read(root.join("tests/mirror/gateway.auto.yaml")).unwrap();
+    let before=fs::read(root.join("tests/mirror/gateway.rs/gateway.auto.yaml")).unwrap();
     assert!(run(root,&["index"]).status.success());
-    assert_eq!(before,fs::read(root.join("tests/mirror/gateway.auto.yaml")).unwrap());
+    assert_eq!(before,fs::read(root.join("tests/mirror/gateway.rs/gateway.auto.yaml")).unwrap());
     assert_eq!(source,fs::read(root.join("src/gateway.rs")).unwrap());
 }
 
@@ -133,4 +132,62 @@ fn source_names_are_resolved_by_explicit_alias_and_transitive_hops() {
     let two=run(root,&["impact","-f","Gateway","-l","2","-o","json"]);
     let two:serde_json::Value=serde_json::from_slice(&two.stdout).unwrap();
     assert!(two["affected_sources"].as_array().unwrap().iter().any(|s|s.as_str()==Some("src/top.rs")));
+}
+
+#[test]
+fn same_file_mutual_dependencies_are_distinct_and_cycle_safe() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::write(root.join("src/paired.rs"),
+        "pub struct A { pub b: Option<Box<B>> }\nimpl A { pub fn interact(&self, b: &B) {} }\npub struct B { pub a: Option<Box<A>> }\nimpl B { pub fn interact(&self, a: &A) {} }\n").unwrap();
+    let out = run(root, &["index", "-o", "json"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let data: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(data["indexed"], 5);
+    let a_manifest: serde_json::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/paired.rs/a.auto.yaml")).unwrap()).unwrap();
+    let b_manifest: serde_json::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/paired.rs/b.auto.yaml")).unwrap()).unwrap();
+    assert_eq!(a_manifest["dependencies"][0]["identity"], "crate::paired::B");
+    assert_eq!(b_manifest["dependencies"][0]["identity"], "crate::paired::A");
+    assert_eq!(a_manifest["dependents"]["level_1"].as_array().unwrap().len(), 1);
+    assert_eq!(b_manifest["dependents"]["level_1"].as_array().unwrap().len(), 1);
+    assert_eq!(a_manifest["dependents"]["level_1"][0]["identity"], "crate::paired::B");
+    assert_eq!(b_manifest["dependents"]["level_1"][0]["identity"], "crate::paired::A");
+    let selection = run(root, &["impact", "-f", "A", "-l", "10000", "-o", "json"]);
+    assert!(selection.status.success(), "{}", String::from_utf8_lossy(&selection.stderr));
+    let selected: serde_json::Value = serde_json::from_slice(&selection.stdout).unwrap();
+    assert_eq!(selected["target"], "crate::paired::A");
+    assert_eq!(selected["affected_symbols"].as_array().unwrap().len(), 2);
+    assert_eq!(selected["affected_sources"].as_array().unwrap().iter()
+        .filter(|file| file.as_str() == Some("src/paired.rs")).count(), 1);
+    assert!(selected["affected_symbols"].as_array().unwrap().iter()
+        .any(|id| id.as_str() == Some("crate::paired::B")));
+    assert!(!run(root, &["impact", "-f", "src/paired.rs"]).status.success());
+    assert!(run(root, &["scaffold"]).status.success());
+    assert!(root.join("tests/unit/mirror/paired.rs/test_a.rs").is_file());
+    assert!(root.join("tests/unit/mirror/paired.rs/test_b.rs").is_file());
+    assert!(root.join("tests/mocks/mirror/paired.rs/mock_a.rs").is_file());
+}
+#[test]
+fn cycles_and_diamonds_keep_minimum_reverse_impact_level() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::write(root.join("src/chain.rs"),
+        "pub struct A { pub b: B }\npub struct B { pub a: Box<A>, pub c: C }\npub struct C;\npub struct D { pub a: A, pub c: C }\n").unwrap();
+    assert!(run(root, &["index"]).status.success());
+    let first = run(root, &["impact", "-f", "C", "-l", "1", "-o", "json"]);
+    let body: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    let ids = body["affected_symbols"].as_array().unwrap();
+    assert_eq!(ids.len(), 3);
+    assert!(!ids.iter().any(|x| x.as_str() == Some("crate::chain::A")));
+    let second = run(root, &["impact", "-f", "C", "-l", "2", "-o", "json"]);
+    let body: serde_json::Value = serde_json::from_slice(&second.stdout).unwrap();
+    assert_eq!(body["affected_symbols"].as_array().unwrap().len(), 4);
+    assert_eq!(body["target"], "crate::chain::C");
+    let c_manifest: serde_json::Value = serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/chain.rs/c.auto.yaml")).unwrap()).unwrap();
+    assert_eq!(c_manifest["dependents"]["level_1"].as_array().unwrap().len(), 2);
+    assert_eq!(c_manifest["dependents"]["level_2"].as_array().unwrap().len(), 1);
+    assert_eq!(c_manifest["dependents"]["level_2"][0]["identity"], "crate::chain::A");
 }

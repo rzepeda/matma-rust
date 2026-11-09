@@ -15,33 +15,43 @@ impl Impact {
             ["source_file", "symbol", "identity"].iter().any(|key| r[key].as_str() == Some(target))
                 || r["source_file"].as_str().map(|f|f.ends_with(target)).unwrap_or(false)
         }).collect();
-        if matches.len() != 1 { bail!("impact target must match exactly one indexed type, found {}", matches.len()); }
+        if matches.len() != 1 { bail!("impact target must match exactly one indexed type (use a type or fully qualified identity when multiple share a file); found {}", matches.len()); }
         let selected = matches[0];
         let manifest_file = selected["manifest"].as_str().ok_or_else(||anyhow!("missing manifest pointer"))?;
         let manifest = Store::read_yaml(&project.root.join(manifest_file))?;
-        if manifest["source_file"] != selected["source_file"] { bail!("corrupt source manifest; run index"); }
+        if manifest["source_file"] != selected["source_file"] || manifest["identity"] != selected["identity"] { bail!("corrupt type manifest; run index"); }
         let mut unit = BTreeSet::new();
         let mut interaction = BTreeSet::new();
         let mut missing = BTreeSet::new();
         let mut affected = BTreeSet::new();
+        let mut affected_symbols = BTreeSet::new();
         let origin = selected["source_file"].as_str().unwrap();
         affected.insert(origin.to_string());
+        let origin_identity = selected["identity"].as_str().unwrap();
+        affected_symbols.insert(origin_identity.to_string());
         Self::register(project,&manifest["mirrors"]["unit_test"], &mut unit,&mut missing);
         if level >= 1 { Self::register(project,&manifest["mirrors"]["interaction_test"],&mut interaction,&mut missing); }
-        for depth in 1..=level {
-            let key = format!("level_{depth}");
-            if let Some(dependents) = manifest["dependents"][key.as_str()].as_array() {
-                for dependent in dependents {
-                    if let Some(path) = dependent["source_file"].as_str() { affected.insert(path.into()); }
-                    Self::register(project,&dependent["unit_test"],&mut unit,&mut missing);
-                    Self::register(project,&dependent["interaction_test"],&mut interaction,&mut missing);
+        // Only visit levels saved in the manifest. Graph generation has
+        // already settled every identity once, even when dependencies cycle.
+        if let Some(groups) = manifest["dependents"].as_object() {
+            for (key, dependents) in groups {
+                let Some(distance) = key.strip_prefix("level_").and_then(|n| n.parse::<usize>().ok()) else { continue; };
+                if distance > level { continue; }
+                if let Some(dependents) = dependents.as_array() {
+                    for dependent in dependents {
+                        let Some(identity) = dependent["identity"].as_str() else { continue; };
+                        if identity == origin_identity || !affected_symbols.insert(identity.into()) { continue; }
+                        if let Some(path) = dependent["source_file"].as_str() { affected.insert(path.into()); }
+                        Self::register(project,&dependent["unit_test"],&mut unit,&mut missing);
+                        Self::register(project,&dependent["interaction_test"],&mut interaction,&mut missing);
+                    }
                 }
             }
         }
-        let (business,regression,registry_missing) = Self::registrations(project,&affected)?;
+        let (business,regression,registry_missing) = Self::registrations(project,&affected,&affected_symbols)?;
         missing.extend(registry_missing);
-        Ok(json!({"status":"ok","command":"impact","target":origin,"level":level,
-            "affected_sources":affected,"unit_tests":unit,"interaction_tests":interaction,
+        Ok(json!({"status":"ok","command":"impact","target":origin_identity,"source_file":origin,"level":level,
+            "affected_sources":affected,"affected_symbols":affected_symbols,"unit_tests":unit,"interaction_tests":interaction,
             "business_tests":business,"regression_tests":regression,"missing_tests":missing,
             "note":"MATMA selects tests only; invoke cargo test explicitly. Registry tiers are not automatically executed."}))
     }
@@ -53,7 +63,7 @@ impl Impact {
         }
     }
 
-    fn registrations(project: &Project, affected: &BTreeSet<String>) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
+    fn registrations(project: &Project, affected: &BTreeSet<String>, affected_symbols: &BTreeSet<String>) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
         let path = project.tests_root.join("matma-verification.yaml");
         let mut business = BTreeSet::new();
         let mut regression = BTreeSet::new();
@@ -61,7 +71,7 @@ impl Impact {
         if !path.exists() { return Ok((business,regression,missing)); }
         let root: Value = serde_yaml::from_str(&fs::read_to_string(path)?)?;
         for row in root["entries"].as_array().into_iter().flatten() {
-            if !row["source"].as_str().map(|s| affected.contains(s)).unwrap_or(false) { continue; }
+            if !row["source"].as_str().map(|s| affected.contains(s) || affected_symbols.contains(s)).unwrap_or(false) { continue; }
             for (name, paths) in [("business",&mut business),("regression",&mut regression)] {
                 if let Some(group) = row[name].as_array() {
                     for value in group {

@@ -47,9 +47,9 @@ All commands support `-s/--source-root` (default `src`), `-t/--tests-root` (defa
 
 ## Rust-native boundaries
 
-Rust structs/enums/unions are primary concrete types; traits are primary contract types but cannot be instantiated. A normal Rust file may have one matching named primary type plus `impl` blocks. Glue-only `lib.rs`, `main.rs`, and `mod.rs` are not forced to contain a primary type. The AST analyzer supports explicit module/type references and `use` aliases, but it does not emulate `rustc` resolution of macros, workspace crates, or cfg-specific expansions. It reports some unknowns and does not claim whole-program precision.
+Rust structs/enums/unions are primary concrete types; traits are primary contract types but cannot be instantiated. A normal Rust file may have one or more named primary types, each with its associated `impl` blocks. Glue-only `lib.rs`, `main.rs`, and `mod.rs` are not forced to contain a primary type. The AST analyzer supports explicit module/type references and `use` aliases, but it does not emulate `rustc` resolution of macros, workspace crates, or cfg-specific expansions. It reports some unknowns and does not claim whole-program precision.
 
-The source-relative mirror creates `tests/unit/mirror/.../test_*.rs`, `tests/interaction/mirror/.../test_*_interaction.rs`, `tests/mocks/mirror/.../mock_*.rs`, and `tests/mirror/.../*.auto.yaml`. Cargo only discovers top-level integration test files, so scaffold also generates `tests/matma_unit.rs` and `tests/matma_interaction.rs`. These are managed generated entrypoints; handwritten test files are never overwritten. Tests run as external integration crates and require public host APIs; private tests need a future explicitly accepted approach.
+The mirror creates one test/mock/manifest per type under the containing source filename, e.g. `tests/unit/mirror/services/order_processing.rs/test_a.rs` and `tests/mirror/services/order_processing.rs/a.auto.yaml`. Cargo only discovers top-level integration test files, so scaffold also generates `tests/matma_unit.rs` and `tests/matma_interaction.rs`. These are managed generated entrypoints; handwritten test files are never overwritten. Tests run as external integration crates and require public host APIs; private tests need a future explicitly accepted approach.
 
 To register non-mirrored business/regression tests, copy [`tests/matma-verification.example.yaml`](tests/matma-verification.example.yaml) to `tests/matma-verification.yaml` and update its source/test paths. MATMA reports these separately; invoke Cargo and live-service gateways explicitly.
 
@@ -73,3 +73,11 @@ cargo clippy --all-targets
 ```
 
 The CI workflow runs these on Linux and Windows. No benchmark or compatibility claim is made without measured evidence. See the ADR for currently unsupported Rust syntax and the release boundary.
+
+## Type-level mirrors and circular dependencies
+
+MATMA targets **types**, not physical files. Multiple types may coexist in `src/services/order_processing.rs` with independent mirrors, mocks, manifests and impact identities (`crate::services::order_processing::A`, `crate::services::order_processing::B`). Specify a type or full identity when a file contains multiple types; selecting the ambiguous source path is an error.
+
+Directed type dependencies may be cyclic (A → B → A). MATMA starts reverse traversal with the original type in a settled set, processes each additional type once and selects minimum weighted path distances (usage=1, import-only=2). Impact returns `affected_symbols` as well as deduplicated `affected_sources`, and a high level neither repeats the origin nor traverses the cycle indefinitely.
+
+Shared free functions, macros, reexports and unresolved generated code can affect multiple types. The current AST analysis does not fully attribute all such references and must not be represented as complete impact detection. The separately agreed Rust private-test child-module bridge is **not yet generated** by this version; current Cargo test entrypoints still see only public items.

@@ -31,3 +31,7 @@ Each bundle has its own `SKILL.md`, `README.md`, and CLI reference. The Codex bu
 - Confirm a real consumer's complete index → scaffold → impact → authored test → explicit Cargo verification workflow; execute live-service regression only in an approved environment.
 - Document measured benchmark results instead of promising an asymptotic runtime speedup. Manifest lookup is bounded, but source hashing and directory metadata I/O remain proportional to indexed sources.
 - Review library dependencies and packaging; obtain explicit approval for any crates.io publication, tag, merge, or deployment.
+
+## Follow-up: type identity and cyclic dependency support (2026-11-09)
+
+The AST inventory now records distinct named types, even in the same file, and attributes references in each type declaration and associated implementation. Mirrored paths include the original source filename as a directory, with individual unit/interaction/mock/manifest companions for each type. Reverse impact uses a settled set seeded with the original type; shortest weighted paths eliminate repeated nodes, including A ↔ B cycles and multi-path diamonds. `impact` reports unique `affected_symbols` separately from physical `affected_sources`. A file path with multiple types is an ambiguous target: specify the exact type. The approved private-member child-module test bridge remains outstanding.

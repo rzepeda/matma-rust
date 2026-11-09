@@ -2,8 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
-use heck::ToSnakeCase;
+use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 use syn::visit::{self, Visit};
 use syn::{Item, UseTree};
@@ -25,7 +24,9 @@ impl<'ast> Visit<'ast> for SourceParser {
 }
 
 impl SourceParser {
-    pub fn parse(path: &Path, project_root: &Path, source_root: &Path) -> Result<Option<SourceRecord>> {
+    /// One record per named type, even when several types share a source file.
+    /// A type owns references within its declaration and associated impls.
+    pub fn parse(path: &Path, project_root: &Path, source_root: &Path) -> Result<Vec<SourceRecord>> {
         let bytes = fs::read(path).with_context(|| format!("cannot read {}", path.display()))?;
         let content = std::str::from_utf8(&bytes).context("Rust source is not UTF-8")?;
         let file = syn::parse_file(content).with_context(|| format!("Rust syntax error in {}", path.display()))?;
@@ -48,35 +49,53 @@ impl SourceParser {
                 _ => {}
             }
         }
-        if types.len() > 1 {
-            bail!("{} declares {} primary types; MATMA requires one", path.display(), types.len());
-        }
-        let Some((symbol, kind)) = types.into_iter().next() else { return Ok(None) };
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if stem != symbol.to_snake_case() {
-            bail!("{} defines {symbol}, expected filename {}.rs", path.display(), symbol.to_snake_case());
-        }
         let source_file = path.strip_prefix(project_root)?.to_string_lossy().replace('\\', "/");
         let relative = path.strip_prefix(source_root)?;
         let mut module_segments: Vec<_> = relative.components().map(|v| v.as_os_str().to_string_lossy().to_string()).collect();
         if let Some(last) = module_segments.last_mut() {
-            *last = stem.into();
+            *last = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").into();
         }
-        // src/thing/mod.rs is module glue, but if it contains a named type its
-        // basename cannot coincide with that type, so it was rejected above.
         let module_name = format!("crate::{}", module_segments.join("::"));
-        let mut visitor = Self { references: BTreeSet::new() };
-        visitor.visit_file(&file);
-        Ok(Some(SourceRecord {
-            source_file,
-            module_name,
-            symbol,
-            kind: kind.into(),
-            sha256: format!("{:x}", Sha256::digest(&bytes)),
-            imports,
-            references: visitor.references,
-            diagnostics,
-        }))
+        let source_sha256 = format!("{:x}", Sha256::digest(&bytes));
+        let has_shared_functions = file.items.iter().any(|item| matches!(item, Item::Fn(_)));
+        let mut records = Vec::new();
+        for (symbol, kind) in types {
+            let mut visitor = Self { references: BTreeSet::new() };
+            for item in &file.items {
+                let owns_item = match item {
+                    Item::Struct(v) => kind == "struct" && v.ident.to_string() == symbol,
+                    Item::Enum(v) => kind == "enum" && v.ident.to_string() == symbol,
+                    Item::Trait(v) => kind == "trait" && v.ident.to_string() == symbol,
+                    Item::Union(v) => kind == "union" && v.ident.to_string() == symbol,
+                    Item::Impl(v) => Self::impl_owner(v).as_deref() == Some(symbol.as_str()),
+                    _ => false,
+                };
+                if owns_item { visitor.visit_item(item); }
+            }
+            let mut own_diagnostics = diagnostics.clone();
+            if has_shared_functions {
+                own_diagnostics.push("shared module-level free functions have no single type owner".into());
+            }
+            records.push(SourceRecord {
+                source_file: source_file.clone(),
+                module_name: module_name.clone(),
+                symbol,
+                kind: kind.into(),
+                sha256: source_sha256.clone(),
+                imports: imports.clone(),
+                references: visitor.references,
+                diagnostics: own_diagnostics,
+            });
+        }
+        Ok(records)
+    }
+
+    fn impl_owner(item: &syn::ItemImpl) -> Option<String> {
+        match item.self_ty.as_ref() {
+            syn::Type::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 =>
+                path.path.segments.first().map(|segment| segment.ident.to_string()),
+            _ => None,
+        }
     }
 
     fn imports(tree: &UseTree, prefix: Vec<String>, out: &mut Vec<(String, String)>, diagnostics: &mut Vec<String>) {
@@ -89,8 +108,7 @@ impl SourceParser {
             UseTree::Name(n) => {
                 let mut path = prefix;
                 path.push(n.ident.to_string());
-                let alias = n.ident.to_string();
-                out.push((alias, path.join("::")));
+                out.push((n.ident.to_string(), path.join("::")));
             }
             UseTree::Rename(n) => {
                 let mut path = prefix;

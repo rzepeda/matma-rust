@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-/// One primary Rust struct/enum/trait and its source-owned static evidence.
+/// One named Rust type with declaration and impl reference evidence.
 #[derive(Debug, Clone)]
 pub struct SourceRecord {
     pub source_file: String,

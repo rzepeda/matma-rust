@@ -17,7 +17,7 @@ pub enum Command {
         #[arg(long, short = 'f')]
         target: Option<String>,
     },
-    /// Audit one-primary-type-per-file and native naming conventions.
+    /// Audit Rust type identities and source syntax.
     Validate {
         #[command(flatten)]
         options: Options,

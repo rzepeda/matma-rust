@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
+use heck::ToSnakeCase;
 use serde_json::{json, Value};
 use crate::project::Project;
 use crate::source_record::SourceRecord;
@@ -10,8 +11,10 @@ pub struct Scaffold;
 impl Scaffold {
     pub fn mirror(project: &Project, record: &SourceRecord) -> Value {
         let rel = Path::new(&record.source_file).strip_prefix(project.source_root.strip_prefix(&project.root).unwrap()).unwrap();
-        let stem = rel.file_stem().unwrap().to_string_lossy();
-        let parent = rel.parent().unwrap_or(Path::new(""));
+        // The source filename acts as the identity namespace for all types
+        // declared within it, avoiding collisions across modules/files.
+        let stem = record.symbol.to_snake_case();
+        let parent = rel;
         let tests = project.tests_root.strip_prefix(&project.root).unwrap();
         let path = |tier: &str, name: String| {
             tests.join(tier).join("mirror").join(parent).join(name).to_string_lossy().replace('\\', "/")

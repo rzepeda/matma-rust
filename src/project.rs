@@ -48,24 +48,30 @@ impl Project {
             let entry = item?;
             if entry.file_type().is_symlink() { bail!("symlink in source tree: {}", entry.path().display()); }
             if !entry.file_type().is_file() || entry.path().extension().and_then(|s| s.to_str()) != Some("rs") { continue; }
-            if let Some(record) = SourceParser::parse(entry.path(), &self.root, &self.source_root)? {
+            for record in SourceParser::parse(entry.path(), &self.root, &self.source_root)? {
                 if !names.insert(record.identity()) { return Err(anyhow!("duplicate identity: {}", record.identity())); }
                 found.push(record);
             }
         }
-        found.sort_by(|a,b| a.source_file.cmp(&b.source_file));
+        found.sort_by_key(SourceRecord::identity);
         Ok(found)
     }
 
     pub fn validate(&self) -> Vec<String> {
         let mut errors = Vec::new();
+        let mut identities = BTreeSet::new();
         for item in WalkDir::new(&self.source_root).follow_links(false).sort_by_file_name() {
             match item {
                 Ok(entry) => {
                     if entry.file_type().is_symlink() { errors.push(format!("symlink not supported: {}",entry.path().display())); }
                     else if entry.file_type().is_file() && entry.path().extension().and_then(|v| v.to_str())==Some("rs") {
-                        if let Err(error) = SourceParser::parse(entry.path(), &self.root, &self.source_root) {
-                            errors.push(format!("{error:#}"));
+                        match SourceParser::parse(entry.path(), &self.root, &self.source_root) {
+                            Ok(records) => for record in records {
+                                if !identities.insert(record.identity()) {
+                                    errors.push(format!("duplicate type identity: {}", record.identity()));
+                                }
+                            },
+                            Err(error) => errors.push(format!("{error:#}")),
                         }
                     }
                 }
