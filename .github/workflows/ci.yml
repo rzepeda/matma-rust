@@ -33,6 +33,7 @@ jobs:
           "$EXE" scaffold --target A --format json
           "$EXE" scaffold --target B --format json
           "$EXE" scaffold --target PricingContract --format json
+          "$EXE" scaffold --target AltProcessor --format json
           "$EXE" validate --check --format json
           "$EXE" impact --target A --level 1 --format json
           cargo test --all-targets

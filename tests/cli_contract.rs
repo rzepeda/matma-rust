@@ -344,3 +344,34 @@ fn changes_requires_two_meaningful_indexed_revisions() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("no preceding type index"));
 }
+
+#[test]
+fn cross_file_impl_is_owned_by_type_and_trait_has_real_implementor() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/contract.rs"),"pub trait Contract { fn value(&self)->u8; }\n").unwrap();
+    fs::write(root.join("src/model.rs"),"pub struct Model;\n").unwrap();
+    fs::write(root.join("src/implementation.rs"),
+        "use crate::model::Model;\nimpl crate::contract::Contract for Model {fn value(&self)->u8{4}}\n").unwrap();
+    let index=run(root,&["index"]);
+    assert!(index.status.success(),"{}",String::from_utf8_lossy(&index.stderr));
+    let trait_index:serde_json::Value=serde_yaml::from_str(
+        &fs::read_to_string(root.join("tests/mirror/contract.rs/contract.auto.yaml")).unwrap()).unwrap();
+    assert_eq!(trait_index["implementors"][0],"crate::model::Model");
+    let impact=run(root,&["impact","-f","Contract","-l","1","-o","json"]);
+    let selection:serde_json::Value=serde_json::from_slice(&impact.stdout).unwrap();
+    assert!(selection["affected_symbols"].as_array().unwrap().iter()
+       .any(|row|row.as_str()==Some("crate::model::Model")));
+    let context=run(root,&["context","-f","Model","-o","json"]);
+    assert!(context.status.success(),"{}",String::from_utf8_lossy(&context.stderr));
+    let result:serde_json::Value=serde_json::from_slice(&context.stdout).unwrap();
+    assert_eq!(result["regions"].as_array().unwrap().len(),2);
+    assert_eq!(result["regions"][1]["source_file"],"src/implementation.rs");
+    fs::write(root.join("src/implementation.rs"),
+        "use crate::model::Model;\nimpl crate::contract::Contract for Model {fn value(&self)->u8{9}}\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let diff=run(root,&["changes","-l","0","-o","json"]);
+    let changes:serde_json::Value=serde_json::from_slice(&diff.stdout).unwrap();
+    assert_eq!(changes["changed_symbols"].as_array().unwrap().len(),1);
+    assert_eq!(changes["changed_symbols"][0],"crate::model::Model");
+}
