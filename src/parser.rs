@@ -63,10 +63,10 @@ impl SourceParser {
             let mut visitor = Self { references: BTreeSet::new() };
             for item in &file.items {
                 let owns_item = match item {
-                    Item::Struct(v) => kind == "struct" && v.ident.to_string() == symbol,
-                    Item::Enum(v) => kind == "enum" && v.ident.to_string() == symbol,
-                    Item::Trait(v) => kind == "trait" && v.ident.to_string() == symbol,
-                    Item::Union(v) => kind == "union" && v.ident.to_string() == symbol,
+                    Item::Struct(v) => kind == "struct" && v.ident == symbol,
+                    Item::Enum(v) => kind == "enum" && v.ident == symbol,
+                    Item::Trait(v) => kind == "trait" && v.ident == symbol,
+                    Item::Union(v) => kind == "union" && v.ident == symbol,
                     Item::Impl(v) => Self::impl_owner(v).as_deref() == Some(symbol.as_str()),
                     _ => false,
                 };
