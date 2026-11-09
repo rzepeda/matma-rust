@@ -17,3 +17,7 @@ Each package includes a local `references/commands.md`, so copying only one does
 ## Type-scoped mirroring and impact
 
 For A and B in src/services/order_processing.rs, the unit mirrors are tests/unit/mirror/services/order_processing.rs/test_a.rs and test_b.rs; mock mirrors are tests/mocks/mirror/services/order_processing.rs/mock_a.rs and mock_b.rs. Impact of A must not include B just because the two types share a file. Use affected_symbols and returned test paths for selection. Multi-type files need fully qualified symbol identities in the verification registry.
+
+## Rust native testing and indexing
+
+Scaffold now creates managed test-only child-module bridges in the owning source module. Unit/interaction mirrored tests run with `cargo test --lib <module-test-filter>` (or appropriate owning binary), not old external `cargo test --test matma_unit` entrypoints. Run `matma-indexer context -f Type` for symbol-limited source regions and `matma-indexer changes --level N` after two meaningfully different `index` revisions for type-fingerprint change selection. Traits have real-implementor contract tests, and creator-aware mocking must preserve exactly the required real objects.

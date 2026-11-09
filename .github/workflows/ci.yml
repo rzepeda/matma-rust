@@ -37,3 +37,7 @@ jobs:
           "$EXE" validate --check --format json
           "$EXE" impact --target A --level 1 --format json
           cargo test --all-targets
+          cargo test --lib order_processing::matma_unit_a
+          cargo test --lib order_processing::matma_interaction_a
+          cargo test --lib order_processing::matma_unit_pricing_contract
+          python verify_changes.py
