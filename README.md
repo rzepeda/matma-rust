@@ -89,3 +89,7 @@ When A and B share a source file, their unit tests and mocks are independent. Sc
 Rust imports are module-scoped. In multi-type files, unused imports are not attributed to every type as L2 edges; real per-type usages are retained. Existing conservative unused-import behavior remains for single-type files. Unresolved macros and shared free functions still require review.
 
 Use fully qualified type identities (for example crate::services::order_processing::A) in the verification registry for multi-type files. A file-scoped registry entry is allowed only when that file defines one indexed type. Ambiguous entries fail explicitly.
+
+## Native Rust private test bridges
+
+`scaffold` creates mirrored tests and centralized mock modules, then inserts a **marked, test-only** `#[cfg(test)] #[path="..."] mod matma_unit_<type>;` and interaction/mock bridges into the owning source module. These are compiled as **child modules of the source file** and may access its private items, without publishing them. The source is modified only in its MATMA-owned bridge region; developer-authored tests and mocks are not overwritten. Repeated scaffolds are idempotent, and indices are refreshed after bridge insertion. The external `tests/matma_unit.rs` and `tests/matma_interaction.rs` entrypoints are superseded and removed only if MATMA-generated. Run `cargo test --lib matma_unit_a` (or the owning binary target) rather than `cargo test --test matma_unit`. The mirror is the canonical home for tests; agents must migrate any temporary inline tests into it.

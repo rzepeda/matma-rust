@@ -58,7 +58,10 @@ fn scaffold_is_non_destructive_and_failing_by_design() {
     let original = fs::read_to_string(&test).unwrap();
     assert!(original.contains("panic!"));
     assert!(root.join("tests/mocks/mirror/gateway.rs/mock_gateway.rs").exists());
-    assert!(root.join("tests/matma_unit.rs").exists());
+    let bridged = fs::read_to_string(root.join("src/gateway.rs")).unwrap();
+    assert!(bridged.contains("mod matma_unit_gateway;"));
+    assert!(bridged.contains("mod matma_mock_gateway;"));
+    assert!(!root.join("tests/matma_unit.rs").exists());
     fs::write(&test,"// developer-authored test\n").unwrap();
     let second = run(root,&["scaffold","-f","Gateway"]);
     assert!(second.status.success(),"{}",String::from_utf8_lossy(&second.stderr));
@@ -272,4 +275,28 @@ fn business_registry_scopes_to_type_and_rejects_ambiguous_file_registration() {
     let error = run(root, &["impact", "-f", "A"]);
     assert!(!error.status.success());
     assert!(String::from_utf8_lossy(&error.stderr).contains("ambiguous MATMA verification registration"));
+}
+
+#[test]
+fn scaffolding_bridges_private_types_without_overwriting_authored_tests() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/paired.rs"),
+      "struct A { private_value: i32 }\nstruct B { private_value: i32 }\n").unwrap();
+    assert!(run(root,&["scaffold","-f","A"]).status.success());
+    let source=fs::read_to_string(root.join("src/paired.rs")).unwrap();
+    assert!(source.contains("mod matma_unit_a;"));
+    assert!(!source.contains("mod matma_unit_b;"));
+    assert!(run(root,&["scaffold","-f","B"]).status.success());
+    let source2=fs::read_to_string(root.join("src/paired.rs")).unwrap();
+    assert_eq!(source2.matches("// MATMA TEST BRIDGES BEGIN").count(),1);
+    assert!(source2.contains("mod matma_unit_a;"));
+    assert!(source2.contains("mod matma_unit_b;"));
+    assert!(source2.contains("mod matma_mock_a;"));
+    assert!(source2.contains("mod matma_mock_b;"));
+    assert_eq!(source2.matches("#[cfg(test)]").count(),6);
+    assert!(run(root,&["scaffold","-f","A"]).status.success());
+    assert_eq!(fs::read_to_string(root.join("src/paired.rs")).unwrap(),source2);
+    let impact=run(root,&["impact","-f","A","-o","json"]);
+    assert!(impact.status.success(),"{}",String::from_utf8_lossy(&impact.stderr));
 }

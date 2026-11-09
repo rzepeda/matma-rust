@@ -36,8 +36,12 @@ fn execute(cli: Cli) -> Result<()> {
         Command::Index { scaffold, .. } => {
             let files = project.scan()?;
             let graph = Graph::new(&files);
-            Store::write(&project, &files, &graph)?;
             let created = if scaffold { Scaffold::create(&project, &files, None)? } else { Vec::new() };
+            // Scaffolding adds test-only module bridges to source files;
+            // recalculate source hashes so impact is immediately fresh.
+            let indexed = if scaffold { project.scan()? } else { files };
+            let graph = if scaffold { Graph::new(&indexed) } else { graph };
+            Store::write(&project, &indexed, &graph)?;
             json!({"status":"ok","command":"index","indexed":files.len(),"created":created})
         }
         Command::Validate { check, .. } => {
@@ -49,9 +53,10 @@ fn execute(cli: Cli) -> Result<()> {
         }
         Command::Scaffold { target, .. } => {
             let files = project.scan()?;
-            let graph = Graph::new(&files);
-            Store::write(&project, &files, &graph)?;
             let created = Scaffold::create(&project, &files, target.as_deref())?;
+            let indexed = project.scan()?;
+            let graph = Graph::new(&indexed);
+            Store::write(&project, &indexed, &graph)?;
             json!({"status":"ok","command":"scaffold","created":created})
         }
         Command::Impact { target, level, .. } => impact::Impact::select(&project, &target, level)?,
