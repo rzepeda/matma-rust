@@ -42,7 +42,7 @@ fn execute(cli: Cli) -> Result<()> {
             let indexed = if scaffold { project.scan()? } else { files };
             let graph = if scaffold { Graph::new(&indexed) } else { graph };
             Store::write(&project, &indexed, &graph)?;
-            json!({"status":"ok","command":"index","indexed":files.len(),"created":created})
+            json!({"status":"ok","command":"index","indexed":indexed.len(),"created":created})
         }
         Command::Validate { check, .. } => {
             let failures = project.validate();
