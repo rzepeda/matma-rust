@@ -28,11 +28,29 @@ impl Context {
             let end = region["end_line"].as_u64().unwrap_or(0) as usize;
             if start == 0 || end < start { bail!("invalid source region {source_file}:{start}-{end}"); }
             let content = fs::read_to_string(project.root.join(source_file))?;
-            let lines: Vec<_> = content.lines().collect();
-            if end > lines.len() { bail!("stale source region; reindex before reading context"); }
+            let mut starts = vec![0usize];
+            for (offset, byte) in content.bytes().enumerate() {
+                if byte == b'\n' { starts.push(offset + 1); }
+            }
+            if end > starts.len() { bail!("stale source region; reindex before reading context"); }
+            // Exact byte columns exclude siblings even when several types are
+            // declared on one line. Old manifests without columns still use
+            // whole-line extraction until the next index.
+            let snippet = if let (Some(start_col),Some(end_col)) =
+                (region["start_column"].as_u64(),region["end_column"].as_u64()) {
+                let from = starts[start-1].saturating_add(start_col as usize);
+                let to = starts[end-1].saturating_add(end_col as usize);
+                content.get(from..to)
+                    .ok_or_else(||anyhow!("invalid UTF-8 AST span; reindex"))?.to_string()
+            } else {
+                let lines: Vec<_> = content.lines().collect();
+                if end > lines.len() { bail!("stale source region; reindex"); }
+                lines[start-1..end].join("\n")
+            };
             regions.push(json!({
                 "source_file":source_file,"start_line":start,"end_line":end,
-                "kind":region["kind"],"snippet":lines[start-1..end].join("\n")
+                "start_column":region["start_column"],"end_column":region["end_column"],
+                "kind":region["kind"],"snippet":snippet
             }));
         }
         Ok(json!({

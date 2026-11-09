@@ -79,7 +79,9 @@ impl SourceParser {
                     regions.push(SourceRegion {
                         source_file: source_file.clone(),
                         start_line: span.start().line,
+                        start_column: span.start().column,
                         end_line: span.end().line,
+                        end_column: span.end().column,
                         kind: if matches!(item, Item::Impl(_)) {"impl"} else {"declaration"}.into(),
                     });
                     if let Item::Impl(implementation) = item {
@@ -160,7 +162,9 @@ impl SourceParser {
                 region: SourceRegion {
                     source_file:source_file.clone(),
                     start_line:span.start().line,
+                    start_column:span.start().column,
                     end_line:span.end().line,
+                    end_column:span.end().column,
                     kind:"impl".into(),
                 },
                 contract:implementation.trait_.as_ref().map(|(_,name,_)|Self::path_text(name)),

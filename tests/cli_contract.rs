@@ -428,3 +428,22 @@ fn validate_requires_inline_test_migration_to_mirrors() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("must be migrated to MATMA mirrored files"));
 }
+
+#[test]
+fn context_excludes_sibling_type_even_on_same_physical_line() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/paired.rs"),
+        "pub struct A; pub struct B;\nimpl A { fn value(&self)->u8{1} } impl B { fn value(&self)->u8{2} }\n").unwrap();
+    let indexed=run(root,&["index"]);
+    assert!(indexed.status.success(),"{}",String::from_utf8_lossy(&indexed.stderr));
+    let output=run(root,&["context","-f","A","-o","json"]);
+    assert!(output.status.success(),"{}",String::from_utf8_lossy(&output.stderr));
+    let result:serde_json::Value=serde_json::from_slice(&output.stdout).unwrap();
+    let text=result["regions"].as_array().unwrap().iter()
+        .map(|region|region["snippet"].as_str().unwrap()).collect::<Vec<_>>().join("\n");
+    assert!(text.contains("pub struct A"));
+    assert!(text.contains("impl A"));
+    assert!(!text.contains("pub struct B"), "{text}");
+    assert!(!text.contains("impl B"), "{text}");
+}

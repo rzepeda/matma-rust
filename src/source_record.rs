@@ -7,7 +7,9 @@ use serde::{Serialize, Deserialize};
 pub struct SourceRegion {
     pub source_file: String,
     pub start_line: usize,
+    pub start_column: usize,
     pub end_line: usize,
+    pub end_column: usize,
     pub kind: String,
 }
 
