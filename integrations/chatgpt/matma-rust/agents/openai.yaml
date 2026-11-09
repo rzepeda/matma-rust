@@ -1,0 +1,6 @@
+interface:
+  display_name: "MATMA Rust"
+  short_description: "Rust AST indexing and tiered test impact selection"
+  default_prompt: "Use MATMA Rust to validate source naming, refresh the dependency index, scaffold missing red tests if requested, and report exactly which Cargo tests need explicit execution."
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,16 @@
+---
+name: matma-rust-antigravity
+description: Follow MATMA's Rust development and mocking workflow in Antigravity, including AST indexing, safe mirrored scaffolding, impact analysis and Cargo verification.
+---
+
+# MATMA Rust for Antigravity
+
+Use when asked to implement/refactor Rust types, improve tests, or identify impacted tests under MATMA. Load `references/commands.md` on demand.
+
+1. Read the consumer project's own Rust layout; maintain one named primary type per `.rs` file, matching snake_case filename; allow associated `impl` blocks. Respect all seven governing MATMA rules and report native-language limits.
+2. Run `matma-indexer validate --check -o json`, `matma-indexer index -o json` after structural edits; do not run impact against stale manifests.
+3. Generate only missing mirrored test/mock stubs with `scaffold`; never overwrite developer files. Explicitly failing generated tests are tasks, not passing coverage.
+4. Select tests with `impact --target ... --level ... -o json`. Read only implicated source/manifests/mocks and business/regression registrations to limit context.
+5. Verify boundary discipline: unit (one real type), interaction (exactly two real types), business (real domain with infrastructure mocks), regression (real services/datasets). Build trait-based injected doubles in `tests/mocks/mirror/`, not inline in multiple tests.
+6. Run chosen `cargo test` commands manually and report real failures or successful executions. Business/regression tests are separate and may need real-service approval. Never claim that `impact` runs tests.
+7. Surface source macro/trait/workspace/private-API ambiguities and ask for an architecture decision where rule-preserving implementation is impossible.

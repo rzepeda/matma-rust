@@ -1,0 +1,8 @@
+# Copy to tests/matma-verification.yaml in a consuming Rust project.
+# These suites are authored and run explicitly; MATMA never invents or runs them.
+entries:
+  - source: src/services/order_service.rs
+    business:
+      - tests/business/order_workflow.rs
+    regression:
+      - tests/regression/order_live_database.rs
