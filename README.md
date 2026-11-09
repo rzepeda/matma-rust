@@ -1,8 +1,69 @@
-# MATMA Rust
+# MATMA Rust — Multi-Tiered Agentic Testing & Mock Architecture
 
-A standalone Rust implementation of the **Multi-Tiered Agentic Testing & Mock Architecture** (MATMA). MATMA helps coding agents index Rust source dependencies ahead of time, scaffold predictable test and mock files, and **select** the relevant tests after a change. It does not replace Cargo, generate passing tests, execute selected tests, or modify production code.
+MATMA Rust is the Rust/Cargo implementation of MATMA. It uses type-level AST indexing, mirrored tests and centralized mocks, and persisted dependency information to help coding agents select the verification relevant to a code change.
 
-**Status:** Development implementation; Rust-specific decisions in [ADR-001](AIDocumentation/ARCHITECTURE_DECISIONS.md) are proposed for review. Source-of-truth testing boundaries are the MATMA seven rules.
+## The MATMA Methodology
+
+### 1. What is MATMA?
+
+**MATMA (Multi-Tiered Agentic Testing & Mock Architecture)** is a software testing methodology and architectural framework designed to optimize Test-Driven Development (TDD), refactoring, and verification workflows performed by autonomous AI coding agents.
+
+MATMA establishes **seven architectural rules** governing source organization, test isolation, mock management, dependency relationships, and verification boundaries. It addresses constraints specific to LLM-based coding agents: finite context windows, token consumption, repeated filesystem exploration, and the need for focused, deterministic feedback when modifying software.
+
+An agent working on a single class or Rust type may need to find its tests, inspect dependencies, locate appropriate mocks, and determine which consumers could be affected by a change. MATMA combines two mechanisms to make that work predictable:
+
+- **A rule-based testing and mocking methodology:** precise definitions of which classes or types are real and which are mocked at each testing tier.
+- **A deterministic indexing and discovery architecture:** mirrored tests and mock helpers, precomputed reverse dependencies, and persisted manifests for selecting affected verification.
+
+MATMA complements existing frameworks such as pytest and PHPUnit; **it does not replace the host project's test runner**. In Rust, Cargo remains responsible for compiling and executing tests.
+
+### 2. Five optimization objectives
+
+1. **Context-window and token efficiency:** retrieve the relevant type's source regions, tests, mocks, and dependency metadata rather than repeatedly loading unrelated code.
+2. **Deterministic file and symbol discovery:** derive test, mock, and manifest locations from a stable Rust type identity instead of repeated repository-wide searches.
+3. **Disk-materialized reverse dependencies:** build dependency relationships ahead of time and persist generated `.auto.yaml` manifests for focused impact queries.
+4. **Signal-to-noise isolation:** constrain each test tier to a known set of real objects and controlled mocks, narrowing the causes of failures.
+5. **Tiered verification scaling:** start with the changed type, expand to impacted interactions and consumers, and keep business and regression verification as separate tiers.
+
+### 3. The seven architectural rules
+
+MATMA Rust preserves the accepted testing and mocking boundaries. Its [Rust-specific amendments](AIDocumentation/RUST_RULE_AMENDMENTS.md) explicitly adapt the original structural Rule 1 to native Rust type organization.
+
+1. **Deterministic source-to-test identity.** The original MATMA rule specifies one class per file with matching names. The accepted **Rust amendment** makes each named `struct`, `enum`, `union`, or `trait` an independent MATMA identity, even when multiple types share a file. An associated `impl` belongs to its type. Sharing a file does not imply a dependency.
+2. **Isolated unit testing with mocks.** When testing A, **A is real** and every exercised collaborator outside A's boundary is mocked.
+3. **Centralized mirrored mock registries.** Reusable mock implementations live under `tests/mocks/mirror/`, not as duplicate inline fakes. In Rust, substituting a mock requires an appropriate trait, generic interface, or construction seam.
+4. **Strict pairwise interaction isolation.** When testing A → B, **A and B are both real** and all other downstream collaborators are mocked. If real A constructs B, the test exercises that real creation path. Conversely, B's isolated unit test may use MockA to construct **real B** and provide controlled state.
+5. **Service-level boundary mocking for workflows.** Business tests exercise real internal domain types and workflows, mocking only external or infrastructure service boundaries.
+6. **Integrated regression gateways.** Regression tests use real datasets and real participating services, with no service mocks, before merge or deployment. The application and its CI pipeline execute this gateway; MATMA itself does not run it.
+7. **Bifurcated directory topology.** Unit tests, pairwise interaction tests, centralized mocks, and manifests mirror the source type identity; business and regression tests follow workflows rather than individual types.
+
+### 4. Four verification tiers
+
+| Tier | Real participants | Mocked participants | Purpose |
+| --- | --- | --- | --- |
+| **Unit** | One type under test | All its external collaborators | Verify the type in isolation |
+| **Interaction** | Exactly two selected collaborating types | Every other downstream collaborator | Verify the real A → B relationship |
+| **Business** | Internal domain types and workflow logic | External/infrastructure boundaries | Verify business processes |
+| **Regression** | Full application and participating services | None | Verify real-system behavior |
+
+Rust uses **type-level** deterministic mirroring, rather than Python's module-level or PHP's class-file mapping. The source file `src/services/order_processing.rs` can contain A and B while their tests and mocks remain independent:
+
+```text
+src/services/order_processing.rs
+tests/unit/mirror/services/order_processing.rs/test_a.rs
+tests/unit/mirror/services/order_processing.rs/test_b.rs
+tests/interaction/mirror/services/order_processing.rs/test_a_interaction.rs
+tests/mocks/mirror/services/order_processing.rs/mock_a.rs
+tests/mocks/mirror/services/order_processing.rs/mock_b.rs
+tests/mirror/services/order_processing.rs/a.auto.yaml
+tests/mirror/services/order_processing.rs/b.auto.yaml
+```
+
+MATMA's goal is **verification proportional to the actual change**: a change to A should select A, plus other types genuinely dependent on A at the requested impact level—not every other type declared in the same source file. Type-level AST fingerprints, bounded context extraction, persisted reverse dependencies, and cycle-safe impact selection support that goal.
+
+These are architectural objectives and verification rules, not claims of guaranteed token savings or proof that a selected test passed. MATMA selects tests; developers, agents, Cargo, and CI execute and evaluate them.
+
+**Status:** Development implementation. The agreed Rust-specific decisions are documented in [Architecture Decisions](AIDocumentation/ARCHITECTURE_DECISIONS.md); source-of-truth methodology and explicit Rust amendments are maintained separately. Scaffolding may insert managed **test-only** `#[cfg(test)]` bridge declarations into source files without changing production API visibility; it does not generate passing tests or execute them.
 
 ## Install in a Rust application
 
@@ -43,7 +104,7 @@ Generated tests use `panic!("MATMA: implement ...")`; this is intentional red un
 | --- | --- | --- |
 | `index` | Parse Rust AST, build graph, persist `.auto.yaml` mirrors and freshness metadata | `-s/--source-root`, `-t/--tests-root`, `-S/--scaffold`, `-o/--format` |
 | `validate` | Audit type identities, test bridges and unfinished scaffolds | `-c/--check` |
-| `scaffold` | Create only missing mirror test and mock files plus Cargo test entrypoints | `-f/--target` |
+| `scaffold` | Create missing mirrored unit, interaction, and mock files plus native test-only module bridges | `-f/--target` |
 | `impact` | Read saved manifests, check freshness, select tests by inclusive reverse dependency depth | `-f/--target`, `-l/--level` |
 | `changes` | Compare current and prior indexed type revisions, traverse union of old/new dependencies | `-l/--level` |
 | `context` | Return only type-owned declaration/impl source spans with dependency contracts | `-f/--target` |
