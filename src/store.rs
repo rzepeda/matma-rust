@@ -80,6 +80,8 @@ impl Store {
             let manifest = json!({
                 "schema_version":2,"generator":"matma-rust", "symbol_name":record.symbol,
                 "symbol_kind":record.kind,"identity":record.identity(),"source_file":record.source_file,"source_sha256":record.sha256,
+                "fingerprint":record.fingerprint,"source_regions":record.regions,
+                "implemented_traits":record.implemented_traits,
                 "mirrors":mirrors,"dependencies":graph.dependencies(&record.identity(),records),
                 "dependents":dependents,"diagnostics":record.diagnostics,
             });
@@ -90,6 +92,7 @@ impl Store {
         let tests_root = project.relative(&project.tests_root)?;
         let symbols: Vec<_> = records.iter().map(|r| json!({
             "source_file":r.source_file,"symbol":r.symbol,"identity":r.identity(),
+            "fingerprint":r.fingerprint,"dependencies":graph.dependencies(&r.identity(),records),
             "manifest":Scaffold::mirror(project,r)["manifest_file"]
         })).collect();
         let index = json!({"schema_version":2,"generator":"matma-rust","source_root":source_root,

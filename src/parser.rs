@@ -4,6 +4,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
+use quote::ToTokens;
+use syn::spanned::Spanned;
+use crate::source_record::SourceRegion;
 use syn::visit::{self, Visit};
 use syn::{Item, UseTree};
 
@@ -62,6 +65,9 @@ impl SourceParser {
         let mut records = Vec::new();
         for (symbol, kind) in types {
             let mut visitor = Self { references: BTreeSet::new() };
+            let mut fragments = Vec::new();
+            let mut regions = Vec::new();
+            let mut implemented_traits = BTreeSet::new();
             for item in &file.items {
                 let owns_item = match item {
                     Item::Struct(v) => kind == "struct" && v.ident == symbol,
@@ -71,7 +77,22 @@ impl SourceParser {
                     Item::Impl(v) => Self::impl_owner(v).as_deref() == Some(symbol.as_str()),
                     _ => false,
                 };
-                if owns_item { visitor.visit_item(item); }
+                if owns_item {
+                    visitor.visit_item(item);
+                    fragments.push(item.to_token_stream().to_string());
+                    let span = item.span();
+                    regions.push(SourceRegion {
+                        source_file: source_file.clone(),
+                        start_line: span.start().line,
+                        end_line: span.end().line,
+                        kind: if matches!(item, Item::Impl(_)) {"impl"} else {"declaration"}.into(),
+                    });
+                    if let Item::Impl(implementation) = item {
+                        if let Some((_, trait_path, _)) = &implementation.trait_ {
+                            implemented_traits.insert(Self::path_text(trait_path));
+                        }
+                    }
+                }
             }
             let mut own_diagnostics = diagnostics.clone();
             if has_shared_imports {
@@ -86,12 +107,20 @@ impl SourceParser {
                 symbol,
                 kind: kind.into(),
                 sha256: source_sha256.clone(),
+                fingerprint: format!("{:x}", Sha256::digest(fragments.join("\n").as_bytes())),
+                regions,
+                implemented_traits,
                 imports: imports.clone(),
                 references: visitor.references,
                 diagnostics: own_diagnostics,
             });
         }
         Ok(records)
+    }
+
+    fn path_text(path: &syn::Path) -> String {
+        path.segments.iter().map(|segment| segment.ident.to_string())
+            .collect::<Vec<_>>().join("::")
     }
 
     fn impl_owner(item: &syn::ItemImpl) -> Option<String> {
