@@ -11,9 +11,7 @@ fn every_installed_matma_rust_skill_contains_the_seven_rules_without_conflicting
         // Git on Windows checks out text files with CRLF; normalize the
         // skill content before validating portable Markdown frontmatter.
         let skill = fs::read_to_string(&path).expect("missing MATMA Rust skill")
-            .replace("\r\
-", "\
-");
+            .replace("\r\n", "\n");
         let commands = fs::read_to_string(base.join("references/commands.md")).expect("missing bundled commands reference");
         assert!(skill.starts_with("---\nname: "), "{platform}: invalid skill frontmatter");
         assert_eq!(skill.matches("\n---\n").count(), 1, "{platform}: duplicate frontmatter/document");
