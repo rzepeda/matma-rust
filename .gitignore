@@ -1,0 +1,4 @@
+/target/
+# MATMA generated dependency manifests; source tests and mocks stay versioned.
+tests/mirror/**/*.auto.yaml
+*.swp

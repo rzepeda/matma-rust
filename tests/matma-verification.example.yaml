@@ -1,0 +1,10 @@
+# Copy to tests/matma-verification.yaml in a consuming Rust project.
+# These suites are authored and run explicitly; MATMA never invents or runs them.
+# Prefer a fully qualified TYPE identity. File paths are accepted only when
+# that file contains exactly one indexed type.
+entries:
+  - source: crate::services::order_service::OrderService
+    business:
+      - tests/business/order_workflow.rs
+    regression:
+      - tests/regression/order_live_database.rs

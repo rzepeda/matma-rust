@@ -1,0 +1,12 @@
+# MATMA Rust — owner-approved amendments to the Seven Architectural Rules
+
+This file supplements `AIDocumentation/sources/MATMA_Seven_Architectural_Rules.md`. That source is retained verbatim as historical and normative methodology context; the following are explicit **Rust-language decisions** agreed in this project, not silent changes to the source document.
+
+1. **Type atomicity amendment to Rule 1:** Each Rust `struct`, `enum`, `union`, or `trait` is a distinct test/manifest/impact identity. A Rust file may contain multiple named types and associated implementations. Every type has independent unit, interaction, mock and manifest mirror files. Mere file or module co-location is never a dependency.
+2. **Native privacy and scaffolding:** A marked test-only `#[cfg(test)]` child-module declaration in the owning source module is authorized during scaffolding. Permanent tests reside in the external MATMA mirrors but compile within their source module to access native private APIs. Developers/agents migrate temporary inline tests into those mirrors.
+3. **Traits and implementors:** Traits are contracts, not instantiable objects. Contract tests exercise concrete real implementors, each of which also has its own unit tests. Trait changes impact their implementors.
+4. **Creator-aware testing:** For interaction A→B, if A constructs B, both real A and real B are executed through the normal production creation pathway. In B's unit tests, centralized MockA may construct real B and supply deterministic or mutable state, provided Rust offers a correct seam. The two-real-object interaction and one-real-object unit isolation limits never change.
+5. **Cycles and fingerprints:** Dependency graphs may be circular. A visited/settled type cannot be traversed again; shortest weighted paths determine impact. Per-type normalized AST fingerprints and owned source regions determine change/context identity, independent of whole-file hashes, with uncertainty diagnostics for shared/unresolved constructs.
+6. **Unchanged remaining MATMA rules:** Centralized mock registries, mock boundaries, bifurcated mirrored/process testing topology, and real-service regression gateways remain mandatory. Tools report missing/unsupported isolation rather than falsely claiming coverage.
+
+The Rust implementation status and tested limitations are recorded in `ARCHITECTURE_DECISIONS.md`. The original rule text remains unchanged in `sources/`.

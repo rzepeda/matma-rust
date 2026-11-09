@@ -1,0 +1,44 @@
+# MATMA Rust implementation phases
+
+The normative sources are in [`sources/`](sources/). The Rust adaptation is documented in [ADR-001](ARCHITECTURE_DECISIONS.md), which explicitly identifies owner-review decisions. The phase status below is **implementation status only**, not unconditional product acceptance.
+
+| Phase | Deliverables | Status |
+| --- | --- | --- |
+| 0 — Cross-language decision review | Read accepted seven rules plus Python/PHP lessons; record Rust type/trait, Cargo and mock limitations and proposed decisions | Documented; Owner accepted type atomicity, privacy bridges, trait contract testing, creator-aware instantiation and per-type fingerprints |
+| 1 — Cargo CLI | Standalone installable binary; stable `index`, `scaffold`, `impact`, `validate`; machine-readable output | Implemented |
+| 2 — Rust static inventory | `syn` parsing, file/type mapping, import/path references and diagnostics | Type AST spans and cross-file explicit impl ownership implemented; macros/workspaces incomplete |
+| 3 — Dependency graph + manifest | L1 usage, conservative L2 import-only, shortest reverse impacts, source fingerprints, deterministic regenerated YAML | Type-aware shortest impact with persisted old/new comparisons and AST fingerprints; semantic-resolution limits remain |
+| 4 — Non-destructive scaffolds | Failing unit/interaction placeholders; centralized mock templates; generated Cargo integration entrypoints | Native child-module privacy bridges implemented, failing scaffolds remain intentional |
+| 5 — Read-only impact selection | Stale-index errors; inclusive impact level; expected versus existing tests; explicit workflow/E2E registrations | Implemented |
+| 6 — Validation and cross-platform adoption | Rust CLI fixture tests, GitHub Actions on Windows/Linux, Rust consumer examples, honest unsupported-feature notes | Independent real Cargo consumer fixture now passes Linux/Windows; live regression, performance and macros/workspaces remain open |
+| **7 — Agent consumption (last phase)** | Standalone Rust-project setup instructions and **three separate packaged skills** for Claude, ChatGPT/Codex and Antigravity | Implemented as three independent folders; real consumer activation still requires installation |
+
+## Phase 7 artifacts
+
+The final phase is kept separate because it documents **how to apply MATMA to other Rust applications**, rather than implementing MATMA itself:
+
+1. General setup and CLI semantics: [`../README.md`](../README.md) and [`../integrations/README.md`](../integrations/README.md).
+2. Claude Code: [`../integrations/claude/matma-rust/`](../integrations/claude/matma-rust/) — install into `.claude/skills/matma-rust/`.
+3. ChatGPT/Codex: [`../integrations/chatgpt/matma-rust/`](../integrations/chatgpt/matma-rust/) — install into `.agents/skills/matma-rust-chatgpt/`.
+4. Google Antigravity: [`../integrations/antigravity/matma-rust/`](../integrations/antigravity/matma-rust/) — install into `.agents/skills/matma-rust-antigravity/`.
+
+Each bundle has its own `SKILL.md`, `README.md`, and CLI reference. The Codex bundle also has `agents/openai.yaml`. They are independently portable and do not contain credentials. The skills instruct an agent to preserve MATMA's strict tier boundaries, stop when tests are unfinished or an index is stale, and **run tests explicitly** rather than claim an impact query executed them.
+
+## Outstanding acceptance before merge/release
+
+- Owner accepts or revises the proposed Rust-specific treatment of trait-only files and the private API strategy.
+- Expand coverage for cfg, macros, modules/reexports, workspace crate roots, injectable trait behavior, and Rust-native test runners as needed for production apps.
+- Confirm a real consumer's complete index → scaffold → impact → authored test → explicit Cargo verification workflow; execute live-service regression only in an approved environment.
+- Document measured benchmark results instead of promising an asymptotic runtime speedup. Manifest lookup is bounded, but source hashing and directory metadata I/O remain proportional to indexed sources.
+- Review library dependencies and packaging; obtain explicit approval for any crates.io publication, tag, merge, or deployment.
+
+## Follow-up: type identity and cyclic dependency support (2026-11-09)
+
+The AST inventory now records distinct named types, even in the same file, and attributes references in each type declaration and associated implementation. Mirrored paths include the original source filename as a directory, with individual unit/interaction/mock/manifest companions for each type. Reverse impact uses a settled set seeded with the original type; shortest weighted paths eliminate repeated nodes, including A ↔ B cycles and multi-path diamonds. `impact` reports unique `affected_symbols` separately from physical `affected_sources`. A file path with multiple types is an ambiguous target: specify the exact type. The approved private-member child-module test bridge remains outstanding.
+
+## Verified phase 1–4 extensions
+
+- **Phase 1:** Scaffolded, idempotent and validation-checked test-only source bridges compile separately mirrored private test and mock modules through the owning Cargo crate. Old generated external entrypoints are retired.
+- **Phase 2:** The consumer fixture has real A → real B, a real B created by a stateful MockA, and a trait contract verified against two real implementors. The indexer records trait implementor identities and their reverse dependencies. Test doubles and contract assertions remain authored, not hallucinated by scaffolding.
+- **Phase 3:** Type-specific normalized AST fingerprints, prior-revision snapshots, `changes` over the old/new graph union, region-bounded `context`, and explicit cross-file impl attribution.
+- **Phase 4:** Consumer integration in CI on Windows and Ubuntu, full CLI contract tests, improved validator and agent-skill instructions. Real external-service regression gateways and large workspaces remain outside verified acceptance.
