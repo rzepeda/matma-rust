@@ -63,7 +63,7 @@ impl Impact {
         }
     }
 
-    fn registrations(project: &Project, affected: &BTreeSet<String>, affected_symbols: &BTreeSet<String>, symbols: &[Value]) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
+    pub(crate) fn registrations(project: &Project, affected: &BTreeSet<String>, affected_symbols: &BTreeSet<String>, symbols: &[Value]) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>)> {
         let path = project.tests_root.join("matma-verification.yaml");
         let mut business = BTreeSet::new();
         let mut regression = BTreeSet::new();

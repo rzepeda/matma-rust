@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
 use crate::project::Project;
+use crate::impact::Impact;
 use crate::store::Store;
 
 /// Compare two persisted type inventories, then traverse the union of their
@@ -84,6 +85,7 @@ impl Changes {
             }
         }
         let mut affected = BTreeSet::new();
+        let mut affected_sources = BTreeSet::new();
         let mut units = BTreeSet::new();
         let mut interactions = BTreeSet::new();
         let mut missing = BTreeSet::new();
@@ -91,6 +93,7 @@ impl Changes {
             if distance > level { continue; }
             affected.insert(identity.clone());
             let Some(entry) = now.get(&identity) else { continue; };
+            if let Some(file) = entry["source_file"].as_str() { affected_sources.insert(file.to_string()); }
             let Some(path) = entry["manifest"].as_str() else { continue; };
             let manifest = Store::read_yaml(&project.root.join(path))?;
             if let Some(unit) = manifest["mirrors"]["unit_test"].as_str() {
@@ -104,11 +107,16 @@ impl Changes {
                 }
             }
         }
+        let current_symbols = current["symbols"].as_array().ok_or_else(||anyhow!("missing symbol inventory"))?;
+        let (business,regression,registered_missing) =
+            Impact::registrations(project,&affected_sources,&affected,current_symbols)?;
+        missing.extend(registered_missing);
         Ok(json!({
             "status":"ok","command":"changes","level":level,
             "changed_symbols":changed,"removed_symbols":removed,
-            "affected_symbols":affected,"unit_tests":units,
-            "interaction_tests":interactions,"missing_tests":missing,
+            "affected_symbols":affected,"affected_sources":affected_sources,"unit_tests":units,
+            "interaction_tests":interactions,"business_tests":business,
+            "regression_tests":regression,"missing_tests":missing,
             "note":"Minimum weighted paths across old and new graphs. MATMA selects tests, it does not execute them."
         }))
     }

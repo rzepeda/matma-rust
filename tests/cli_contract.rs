@@ -388,3 +388,26 @@ fn validate_detects_missing_or_damaged_private_bridges() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("incorrect or stale MATMA test bridge"));
 }
+
+#[test]
+fn automatic_changes_registers_only_workflows_of_changed_types() {
+    let temp=fixture();
+    let root=temp.path();
+    let source=root.join("src/paired.rs");
+    fs::write(&source,"pub struct A;\nimpl A { fn value(&self)->u8{1} }\npub struct B;\n").unwrap();
+    fs::create_dir_all(root.join("tests/business")).unwrap();
+    fs::write(root.join("tests/business/a.rs"),"#[test] fn business_a() {}\n").unwrap();
+    fs::write(root.join("tests/business/b.rs"),"#[test] fn business_b() {}\n").unwrap();
+    fs::write(root.join("tests/matma-verification.yaml"),
+        "entries:\n  - source: crate::paired::A\n    business:\n      - tests/business/a.rs\n  - source: crate::paired::B\n    business:\n      - tests/business/b.rs\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    fs::write(&source,"pub struct A;\nimpl A { fn value(&self)->u8{2} }\npub struct B;\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let changes=run(root,&["changes","-l","0","-o","json"]);
+    assert!(changes.status.success(),"{}",String::from_utf8_lossy(&changes.stderr));
+    let data:serde_json::Value=serde_json::from_slice(&changes.stdout).unwrap();
+    assert_eq!(data["changed_symbols"].as_array().unwrap().len(),1);
+    assert_eq!(data["changed_symbols"][0],"crate::paired::A");
+    assert_eq!(data["business_tests"].as_array().unwrap().len(),1);
+    assert_eq!(data["business_tests"][0],"tests/business/a.rs");
+}
