@@ -4,6 +4,7 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use heck::ToSnakeCase;
 use serde_json::{json, Value};
+use syn::Item;
 use crate::project::Project;
 use crate::source_record::SourceRecord;
 
@@ -147,6 +148,15 @@ impl Scaffold {
             group.sort_by_key(|r|r.identity());
             let expected = Self::bridge_block(project,&source,&group)?;
             let body = fs::read_to_string(project.root.join(&source))?;
+            let ast = syn::parse_file(&body).with_context(||format!("cannot parse {source} during bridge validation"))?;
+            for item in &ast.items {
+                let Item::Mod(module) = item else { continue; };
+                let Some((_,children)) = &module.content else { continue; };
+                if children.iter().any(|item| matches!(item,Item::Fn(function)
+                    if function.attrs.iter().any(|attribute|attribute.path().is_ident("test")))) {
+                    diagnostics.push(format!("inline test module {} in {source} must be migrated to MATMA mirrored files",module.ident));
+                }
+            }
             let Some(start) = body.find(BEGIN) else {
                 diagnostics.push(format!("missing MATMA test bridge in {source}"));
                 continue;

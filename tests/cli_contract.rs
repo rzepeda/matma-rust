@@ -411,3 +411,20 @@ fn automatic_changes_registers_only_workflows_of_changed_types() {
     assert_eq!(data["business_tests"].as_array().unwrap().len(),1);
     assert_eq!(data["business_tests"][0],"tests/business/a.rs");
 }
+
+#[test]
+fn validate_requires_inline_test_migration_to_mirrors() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/single.rs"),
+        "pub struct Single;\n#[cfg(test)] mod tests { #[test] fn old_inline() {} }\n").unwrap();
+    assert!(run(root,&["scaffold","-f","Single"]).status.success());
+    // Replace deliberate failing tests, to isolate the migration diagnostic.
+    let unit=root.join("tests/unit/mirror/single.rs/test_single.rs");
+    let interaction=root.join("tests/interaction/mirror/single.rs/test_single_interaction.rs");
+    fs::write(unit,"#[test] fn isolated() { assert_eq!(2,2); }\n").unwrap();
+    fs::write(interaction,"#[test] fn pairwise() { assert!(true); }\n").unwrap();
+    let output=run(root,&["validate","--check","-o","json"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("must be migrated to MATMA mirrored files"));
+}

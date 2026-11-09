@@ -112,3 +112,5 @@ The self-contained [consumer acceptance crate](fixtures/consumer/README.md) is c
 The indexer records implementing types in each trait's `implementors` manifest field. A change to a trait is a real reverse dependency of implementing types. The generated trait-test stub is deliberately failing until the developer/agent writes actual reusable contract assertions over concrete real implementors. Rust's object-safety and constructor constraints still apply: a mock struct is not a drop-in replacement for a hard-coded concrete Rust type.
 
 The `validate --check` command now reports missing/incorrect generated child-module bridges and test stubs still containing the MATMA placeholder panic. This is intentional; red scaffolds are not evidence of completed TDD.
+
+After scaffolding, `validate --check` also flags inline `#[test]` functions inside a source module's inline test module when MATMA mirrors are present. Those development-time tests should be migrated by the agent into the corresponding permanent mirrored test file rather than being left as duplicate sources of truth.
