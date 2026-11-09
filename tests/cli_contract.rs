@@ -73,3 +73,64 @@ fn structural_validation_rejects_misnamed_types() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("expected filename different.rs"));
 }
+
+#[test]
+fn usage_and_import_only_have_distinct_inclusive_levels() {
+    let temp = fixture();
+    let root = temp.path();
+    assert!(run(root, &["index"]).status.success());
+    let one = run(root, &["impact","-f","Gateway","-l","1","-o","json"]);
+    assert!(one.status.success(),"{}",String::from_utf8_lossy(&one.stderr));
+    let first:serde_json::Value = serde_json::from_slice(&one.stdout).unwrap();
+    let affected = first["affected_sources"].as_array().unwrap();
+    assert_eq!(affected.len(), 2);
+    assert!(affected.iter().any(|v|v.as_str()==Some("src/consumer.rs")));
+    assert!(!affected.iter().any(|v|v.as_str()==Some("src/import_only.rs")));
+    let two = run(root, &["impact","-f","Gateway","-l","2","-o","json"]);
+    let second:serde_json::Value = serde_json::from_slice(&two.stdout).unwrap();
+    assert_eq!(second["affected_sources"].as_array().unwrap().len(),3);
+}
+
+#[test]
+fn business_and_regression_are_explicitly_registered_and_not_run() {
+    let temp = fixture();
+    let root = temp.path();
+    fs::create_dir_all(root.join("tests/business")).unwrap();
+    fs::create_dir_all(root.join("tests/regression")).unwrap();
+    fs::write(root.join("tests/business/order_flow.rs"),"#[test] fn workflow() {}\n").unwrap();
+    fs::write(root.join("tests/regression/live.rs"),"#[test] fn end_to_end() {}\n").unwrap();
+    fs::write(root.join("tests/matma-verification.yaml"), "entries:\n  - source: src/gateway.rs\n    business:\n      - tests/business/order_flow.rs\n    regression:\n      - tests/regression/live.rs\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let impact=run(root,&["impact","-f","Gateway","-o","json"]);
+    assert!(impact.status.success(),"{}",String::from_utf8_lossy(&impact.stderr));
+    let report:serde_json::Value=serde_json::from_slice(&impact.stdout).unwrap();
+    assert_eq!(report["business_tests"].as_array().unwrap().len(),1);
+    assert_eq!(report["regression_tests"].as_array().unwrap().len(),1);
+}
+
+#[test]
+fn indexing_is_byte_stable_and_does_not_rewrite_application_source() {
+    let temp=fixture();
+    let root=temp.path();
+    let source=fs::read(root.join("src/gateway.rs")).unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let before=fs::read(root.join("tests/mirror/gateway.auto.yaml")).unwrap();
+    assert!(run(root,&["index"]).status.success());
+    assert_eq!(before,fs::read(root.join("tests/mirror/gateway.auto.yaml")).unwrap());
+    assert_eq!(source,fs::read(root.join("src/gateway.rs")).unwrap());
+}
+
+#[test]
+fn source_names_are_resolved_by_explicit_alias_and_transitive_hops() {
+    let temp=fixture();
+    let root=temp.path();
+    fs::write(root.join("src/consumer.rs"), "use crate::gateway::Gateway as MainGateway;\npub struct Consumer { pub gateway: MainGateway }\n").unwrap();
+    fs::write(root.join("src/top.rs"), "use crate::consumer::Consumer;\npub struct Top { pub inner: Consumer }\n").unwrap();
+    assert!(run(root,&["index"]).status.success());
+    let one=run(root,&["impact","-f","Gateway","-l","1","-o","json"]);
+    let one:serde_json::Value=serde_json::from_slice(&one.stdout).unwrap();
+    assert_eq!(one["affected_sources"].as_array().unwrap().len(),2);
+    let two=run(root,&["impact","-f","Gateway","-l","2","-o","json"]);
+    let two:serde_json::Value=serde_json::from_slice(&two.stdout).unwrap();
+    assert!(two["affected_sources"].as_array().unwrap().iter().any(|s|s.as_str()==Some("src/top.rs")));
+}

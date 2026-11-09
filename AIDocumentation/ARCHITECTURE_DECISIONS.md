@@ -12,7 +12,7 @@ Status: **proposed Rust-specific adaptation for review**. Seven MATMA rules rema
 6. **Integrated regression gateway:** real datasets plus real or containerized services before merge/deploy; no mocks in regression.
 7. **Bifurcated topology:** mirrored type-centric unit/interaction/mocks/manifests and nonmirrored process-centric business/regression suites.
 
-These seven rules are from `MATMA_Seven_Architectural_Rules.md` and `MATMA_Architecture_Implementation_Blueprint_Updated.md`. Rust-specific mechanics below may not weaken their isolation boundaries.
+These seven rules are from [`MATMA_Seven_Architectural_Rules.md`](sources/MATMA_Seven_Architectural_Rules.md) and [`MATMA_Architecture_Implementation_Blueprint_Updated.md`](sources/MATMA_Architecture_Implementation_Blueprint_Updated.md). Rust-specific mechanics below may not weaken their isolation boundaries.
 
 ## Language-specific engineering decisions
 

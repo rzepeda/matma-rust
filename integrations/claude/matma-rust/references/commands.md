@@ -1,6 +1,6 @@
 # MATMA Rust CLI, decisions and verification guide
 
-Install from a MATMA Rust checkout using `cargo install --path /path/to/matma-rust --locked` when lockfile is available; without a lockfile, omit `--locked`. Use the executable in a **consumer Rust project root**.
+Install from a MATMA Rust checkout using `cargo install --path /path/to/matma-rust` (add `--locked` only when a lockfile is included). Use the executable in a **consumer Rust project root**.
 
 ```sh
 matma-indexer validate --check -o json

@@ -9,7 +9,7 @@ A standalone Rust implementation of the **Multi-Tiered Agentic Testing & Mock Ar
 Requires Rust/Cargo with toolchain 1.81 or newer. Until a release is published, use a checked-out local repository:
 
 ```sh
-cargo install --path /path/to/matma-rust --locked
+cargo install --path /path/to/matma-rust
 ```
 
 Or use the executable from this repository:
